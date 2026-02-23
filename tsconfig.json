@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true
+  },
+  "exclude": [
+    "node_modules",
+    "app",
+    "components",
+    "lib",
+    ".next",
+    "next-env.d.ts",
+    "next.config.ts",
+    "eslint.config.mjs"
+  ]
+}

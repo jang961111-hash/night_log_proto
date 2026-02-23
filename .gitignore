@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+.metro-health-check*
+expo-env.d.ts
+
+# Native generated
+ios/
+android/
+.kotlin/
+
+# Local env
+.env*.local
+
+# Debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+
+# Legacy Next.js artifacts left from previous prototype
+.next/
+next-env.d.ts
