@@ -1,11 +1,8 @@
-import { LinearGradient } from "expo-linear-gradient";
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppButton } from "../components/AppButton";
-import { BrandMark } from "../components/BrandMark";
 import { ScreenFadeIn } from "../components/ScreenFadeIn";
 import { HomeCalendarPreviewCard } from "../components/home/HomeCalendarPreviewCard";
-import { HomeStudioBackdrop } from "../components/home/HomeStudioBackdrop";
 import { colors, radius, spacing, typography } from "../theme/tokens";
 import type { HomeCalendarPreview } from "../types/app";
 
@@ -30,45 +27,39 @@ export function HomeScreen({
   hasLatestResult,
   calendarPreview,
 }: HomeScreenProps) {
-  const { height } = useWindowDimensions();
-  const compact = height < 760;
-
   return (
-    <View style={styles.root}>
-      <LinearGradient
-        colors={["#F2F5F8", "#E8EDF2", "#DFE6EC"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
-      />
-      <HomeStudioBackdrop compact={compact} />
+    <SafeAreaView style={styles.root}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <ScreenFadeIn>
+          <View style={styles.heroCard}>
+            <Text style={styles.kicker}>HOME</Text>
+            <Text style={styles.welcome}>{userName}님, 오늘 하루를 정리해볼까요?</Text>
+            <Text style={styles.subCopy}>대화로 기록하고, 내일 실행할 일정까지 한 번에 정리할 수 있어요.</Text>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          compact && styles.scrollContentCompact,
-          { minHeight: height + 70 },
-        ]}
-      >
-        <ScreenFadeIn style={styles.topBlock}>
-          <Text style={styles.kicker}>NIGHT STUDIO</Text>
-          <Text style={styles.welcome}>{userName}님, 오늘 밤 한 번에 정리해볼까요?</Text>
-          <Text style={styles.meta}>연속 기록 {streak}일 · 누적 기록 {historyCount}회</Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>연속 기록</Text>
+                <Text style={styles.statValue}>{streak}일</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>누적 기록</Text>
+                <Text style={styles.statValue}>{historyCount}회</Text>
+              </View>
+            </View>
+          </View>
         </ScreenFadeIn>
 
-        <ScreenFadeIn delay={70} style={[styles.centerArea, compact && styles.centerAreaCompact]}>
-          <View style={styles.brandWrap}>
-            <BrandMark size={compact ? 94 : 106} labelSize={compact ? 33 : 38} />
+        <ScreenFadeIn delay={70}>
+          <View style={styles.ctaCard}>
+            <Text style={styles.ctaTitle}>대화 시작하기</Text>
+            <Text style={styles.ctaDesc}>지금 떠오르는 생각을 짧게 말해보세요. AI가 핵심을 정리해드립니다.</Text>
+            <AppButton
+              label="대화 시작하기"
+              onPress={onStartChat}
+              style={styles.ctaButton}
+              accessibilityHint="저널 대화 화면으로 이동합니다"
+            />
           </View>
-          <Text style={styles.centerTitle}>대화 시작하기</Text>
-          <Text style={styles.centerSub}>손을 쓰지 않아도 됩니다. 지금 말하면 AI가 오늘을 정리하고 내일 일정까지 이어줍니다.</Text>
-          <AppButton
-            label="대화 시작하기"
-            onPress={onStartChat}
-            style={styles.ctaButton}
-            accessibilityHint="저널 대화 화면으로 이동합니다."
-          />
         </ScreenFadeIn>
 
         <ScreenFadeIn delay={120}>
@@ -80,7 +71,7 @@ export function HomeScreen({
           />
         </ScreenFadeIn>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -89,73 +80,85 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  gradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xxl + 8,
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
     paddingBottom: 190,
-    justifyContent: "center",
-    gap: spacing.lg,
+    gap: spacing.md,
   },
-  scrollContentCompact: {
-    paddingTop: spacing.xl,
-  },
-  topBlock: {
-    gap: 4,
+  heroCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "#D8E3EC",
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
   kicker: {
     color: colors.primaryDeep,
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     fontSize: typography.caption,
     fontFamily: typography.family.bold,
   },
   welcome: {
     color: colors.text,
-    fontSize: 29,
-    lineHeight: 38,
+    fontSize: 28,
+    lineHeight: 37,
     fontFamily: typography.family.bold,
   },
-  meta: {
-    marginTop: 2,
+  subCopy: {
     color: colors.mutedText,
     fontSize: typography.body,
+    lineHeight: 23,
+    fontFamily: typography.family.regular,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  statItem: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#D8E3EC",
+    backgroundColor: "#F3F7FA",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    gap: 2,
+  },
+  statLabel: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
     fontFamily: typography.family.medium,
   },
-  centerArea: {
-    justifyContent: "center",
-    borderRadius: radius.lg,
-    backgroundColor: "rgba(249,251,252,0.92)",
-    borderWidth: 1,
-    borderColor: "#C8DDE8",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xxl,
-    gap: spacing.sm,
-  },
-  centerAreaCompact: {
-    paddingVertical: spacing.lg,
-  },
-  brandWrap: {
-    alignItems: "center",
-    marginBottom: spacing.xs,
-  },
-  centerTitle: {
+  statValue: {
     color: colors.text,
-    fontSize: 32,
-    textAlign: "center",
+    fontSize: typography.subtitle,
     fontFamily: typography.family.bold,
   },
-  centerSub: {
+  ctaCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "#D8E3EC",
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  ctaTitle: {
+    color: colors.text,
+    fontSize: typography.section,
+    fontFamily: typography.family.bold,
+  },
+  ctaDesc: {
     color: colors.mutedText,
     fontSize: typography.body,
-    textAlign: "center",
-    fontFamily: typography.family.regular,
     lineHeight: 23,
+    fontFamily: typography.family.regular,
   },
   ctaButton: {
+    marginTop: spacing.sm,
     width: "100%",
-    minHeight: 62,
-    marginTop: spacing.md,
+    minHeight: 58,
   },
 });

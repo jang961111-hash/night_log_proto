@@ -1,5 +1,5 @@
-﻿import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppButton } from "../components/AppButton";
 import { ScreenFadeIn } from "../components/ScreenFadeIn";
@@ -57,10 +57,13 @@ export function InterestScreen({ initialSelected, onSkip, onConfirm }: InterestS
   };
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <ScreenFadeIn style={styles.content}>
-        <Text style={styles.title}>관심사를 선택해주세요</Text>
-        <Text style={styles.subtitle}>추천 문장과 일정 후보를 더 정확하게 맞춰드려요.</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>관심사를 선택해주세요</Text>
+          <Text style={styles.subtitle}>추천 문장과 일정 후보를 더 정확하게 맞춰드려요.</Text>
+          <Text style={styles.counter}>선택됨 {selectedArray.length}개</Text>
+        </View>
 
         <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
           {defaultInterests.map((interest) => (
@@ -83,7 +86,7 @@ export function InterestScreen({ initialSelected, onSkip, onConfirm }: InterestS
           />
         </View>
       </ScreenFadeIn>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -92,12 +95,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xxl,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
   },
   content: {
     flex: 1,
     gap: spacing.md,
+  },
+  header: {
+    gap: 4,
   },
   title: {
     fontSize: typography.section,
@@ -108,6 +114,12 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
     fontFamily: typography.family.regular,
     fontSize: typography.body,
+  },
+  counter: {
+    marginTop: 2,
+    color: colors.primaryDeep,
+    fontFamily: typography.family.medium,
+    fontSize: typography.caption,
   },
   grid: {
     flexDirection: "row",

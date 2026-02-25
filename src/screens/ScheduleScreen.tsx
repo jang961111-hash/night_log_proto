@@ -1,5 +1,6 @@
-﻿import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { AppButton } from "../components/AppButton";
 import { AppHeader } from "../components/AppHeader";
 import { makeId, normalizeTime } from "../lib/insights";
 import { colors, radius, shadows, spacing, typography } from "../theme/tokens";
@@ -39,8 +40,12 @@ export function ScheduleScreen({ items, onChangeItems, onGoHome }: ScheduleScree
   };
 
   return (
-    <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.root}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <AppHeader
           title="일정 조절"
           subtitle="추천 일정을 내일 실행 가능한 시간표로 정리하세요"
@@ -55,10 +60,16 @@ export function ScheduleScreen({ items, onChangeItems, onGoHome }: ScheduleScree
             <TextInput
               value={item.title}
               onChangeText={(value) => updateItem(item.id, { title: value })}
+              onBlur={() =>
+                updateItem(item.id, {
+                  title: item.title.trim() || `할 일 ${index + 1}`,
+                })
+              }
               style={styles.titleInput}
               placeholder={`할 일 ${index + 1}`}
               placeholderTextColor={colors.mutedText}
               accessibilityLabel={`일정 제목 ${index + 1}`}
+              maxLength={40}
             />
             <View style={styles.rightRow}>
               <TextInput
@@ -70,6 +81,7 @@ export function ScheduleScreen({ items, onChangeItems, onGoHome }: ScheduleScree
                 placeholder="00:00"
                 placeholderTextColor={colors.mutedText}
                 accessibilityLabel={`${item.title} 시간`}
+                maxLength={5}
               />
               <Pressable
                 style={styles.removeButton}
@@ -100,27 +112,11 @@ export function ScheduleScreen({ items, onChangeItems, onGoHome }: ScheduleScree
         ) : null}
       </ScrollView>
 
-      <View style={styles.fabRow}>
-        <Pressable
-          style={styles.homeFab}
-          onPress={onGoHome}
-          accessibilityRole="button"
-          accessibilityLabel="홈으로 이동"
-          hitSlop={10}
-        >
-          <Text style={styles.homeIcon}>⌂</Text>
-        </Pressable>
-        <Pressable
-          style={styles.plusFab}
-          onPress={addItem}
-          accessibilityRole="button"
-          accessibilityLabel="일정 항목 추가"
-          hitSlop={10}
-        >
-          <Text style={styles.plusIcon}>＋</Text>
-        </Pressable>
+      <View style={styles.footer}>
+        <AppButton label="메인" onPress={onGoHome} variant="outline" style={styles.footerButton} />
+        <AppButton label="일정 추가" onPress={addItem} style={styles.footerButton} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -132,7 +128,7 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xxl,
-    paddingBottom: 190,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
   },
   title: {
@@ -213,41 +209,16 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontFamily: typography.family.medium,
   },
-  fabRow: {
-    position: "absolute",
-    left: spacing.xl,
-    right: spacing.xl,
-    bottom: spacing.xl,
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "#DCE6EE",
+    backgroundColor: colors.bg,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: spacing.md,
   },
-  homeFab: {
-    width: 92,
-    height: 92,
-    borderRadius: 999,
-    backgroundColor: "#D2D9DE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  plusFab: {
-    width: 86,
-    height: 86,
-    borderRadius: 999,
-    backgroundColor: "#D2D9DE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  homeIcon: {
-    fontSize: 54,
-    color: colors.text,
-    fontFamily: typography.family.bold,
-    marginTop: -4,
-  },
-  plusIcon: {
-    fontSize: 54,
-    color: colors.text,
-    fontFamily: typography.family.medium,
-    marginTop: -4,
+  footerButton: {
+    flex: 1,
   },
 });

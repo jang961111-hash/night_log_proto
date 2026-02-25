@@ -1,4 +1,4 @@
-﻿import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "../components/AppHeader";
 import { ScreenFadeIn } from "../components/ScreenFadeIn";
@@ -39,7 +39,7 @@ export function LegalScreen({ docType, onBack }: LegalScreenProps) {
   const content = docType === "terms" ? termsContent() : privacyContent();
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ScreenFadeIn>
           <AppHeader title={title} subtitle={subtitle} onBack={onBack} />
@@ -63,7 +63,7 @@ export function LegalScreen({ docType, onBack }: LegalScreenProps) {
           </View>
         </ScreenFadeIn>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

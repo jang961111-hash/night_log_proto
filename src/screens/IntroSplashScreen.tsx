@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, StyleSheet, Text } from "react-native";
 
 import { BrandMark } from "../components/BrandMark";
 import { colors, spacing, typography } from "../theme/tokens";
@@ -18,11 +18,11 @@ export function IntroSplashScreen({ onDone }: IntroSplashScreenProps) {
   }, [onDone]);
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <BrandMark size={170} labelSize={52} />
       <Text style={styles.brand}>NightLog</Text>
-      <Text style={styles.tagline}>밤 3분, 오늘 감정 정리와 내일 실행 1개 확정</Text>
-    </View>
+      <Text style={styles.tagline}>단 3분, 오늘 감정 정리와 내일 실행 한 가지 확정</Text>
+    </SafeAreaView>
   );
 }
 

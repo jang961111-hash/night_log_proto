@@ -28,6 +28,19 @@ npm install
 npm run start
 ```
 
+## 서비스 홈페이지(정적)
+- 파일 위치: `homepage/index.html`
+- 빠른 미리보기(권장):
+```bash
+npx serve homepage
+```
+- 또는 `homepage/index.html` 파일을 브라우저에서 직접 열어도 됩니다.
+- 스크린샷 교체:
+  - `homepage/media/screens/01-journal-card.png` ~ `09-terms.png` 파일을 같은 이름으로 교체하면 즉시 반영됩니다.
+- 문의 폼 웹훅 연동(선택):
+  - `homepage/config.js`의 `window.NIGHTLOG_WEBHOOK_URL` 값을 설정하면 Notion 연동용 웹훅으로 `POST` 전송됩니다.
+  - 예시는 `homepage/config.example.js` 참고
+
 ## 음성 기능 실행 주의사항
 - `expo-speech-recognition`은 일반 Expo Go에서 제약이 있습니다.
 - 음성 인식 테스트는 Development Build 또는 EAS 빌드에서 진행하세요.

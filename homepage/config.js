@@ -1,0 +1,1 @@
+﻿window.NIGHTLOG_WEBHOOK_URL = "";

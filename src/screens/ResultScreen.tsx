@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppButton } from "../components/AppButton";
 import { AppHeader } from "../components/AppHeader";
@@ -71,18 +71,18 @@ export function ResultScreen({
 
   if (!bundle) {
     return (
-      <View style={styles.emptyRoot}>
+      <SafeAreaView style={styles.emptyRoot}>
         <Text style={styles.emptyTitle}>결과</Text>
         <Text style={styles.emptyText}>아직 생성된 결과가 없습니다. 대화를 마친 뒤 결과를 확인해주세요.</Text>
         <View style={styles.emptyActions}>
           <AppButton label="메인" onPress={onGoMain} />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ScreenFadeIn>
           <AppHeader
@@ -157,31 +157,37 @@ export function ResultScreen({
         <ScreenFadeIn delay={120}>
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>내일 할일 추천목록</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scheduleRow}>
-              {bundle.scheduleItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={[styles.scheduleCard, item.selected && styles.scheduleCardSelected]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: item.selected }}
-                  accessibilityLabel={`${item.title} ${item.time} ${item.selected ? "선택됨" : "선택 안됨"}`}
-                  onPress={() => {
-                    const next = bundle.scheduleItems.map((candidate) =>
-                      candidate.id === item.id
-                        ? { ...candidate, selected: !candidate.selected }
-                        : candidate,
-                    );
-                    onChangeScheduleItems(next);
-                  }}
-                >
-                  <Text style={styles.scheduleTitle}>{item.title}</Text>
-                  <Text style={styles.scheduleTime}>{item.time}</Text>
-                  <View style={styles.checkBadge}>
-                    <Text style={styles.checkBadgeText}>{item.selected ? "✓" : ""}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {bundle.scheduleItems.length === 0 ? (
+              <Text style={styles.selectionText}>
+                추천 일정이 없습니다. 일정 조절 화면에서 직접 추가할 수 있어요.
+              </Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scheduleRow}>
+                {bundle.scheduleItems.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={[styles.scheduleCard, item.selected && styles.scheduleCardSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: item.selected }}
+                    accessibilityLabel={`${item.title} ${item.time} ${item.selected ? "선택됨" : "선택 안됨"}`}
+                    onPress={() => {
+                      const next = bundle.scheduleItems.map((candidate) =>
+                        candidate.id === item.id
+                          ? { ...candidate, selected: !candidate.selected }
+                          : candidate,
+                      );
+                      onChangeScheduleItems(next);
+                    }}
+                  >
+                    <Text style={styles.scheduleTitle}>{item.title}</Text>
+                    <Text style={styles.scheduleTime}>{item.time}</Text>
+                    <View style={styles.checkBadge}>
+                      <Text style={styles.checkBadgeText}>{item.selected ? "✓" : ""}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
             <Text style={styles.selectionText}>선택된 일정 {selectedCount}개</Text>
           </View>
         </ScreenFadeIn>
@@ -191,7 +197,7 @@ export function ResultScreen({
         <AppButton label="메인" onPress={onGoMain} variant="outline" style={styles.footerButton} />
         <AppButton label="내일의 일정 조절하기" onPress={onGoSchedule} style={styles.footerButton} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -203,7 +209,7 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xxl,
-    paddingBottom: 190,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
   },
   panel: {
@@ -326,10 +332,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
   },
   footer: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl + 48,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "#DCE6EE",
+    backgroundColor: colors.bg,
     flexDirection: "row",
     gap: spacing.md,
   },

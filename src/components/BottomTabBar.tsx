@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+﻿import { Ionicons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { colors, radius, shadows, spacing, touchTarget, typography } from "../theme/tokens";
+import { colors, spacing, touchTarget } from "../theme/tokens";
 
 type BottomTabKey = "home" | "journal" | "calendar" | "settings";
 
@@ -17,11 +18,18 @@ const labels: Record<BottomTabKey, string> = {
   settings: "설정",
 };
 
-const icons: Record<BottomTabKey, string> = {
-  home: "⌂",
-  journal: "◉",
-  calendar: "▦",
-  settings: "⚙",
+const iconName: Record<BottomTabKey, keyof typeof Ionicons.glyphMap> = {
+  home: "sparkles-outline",
+  journal: "book-outline",
+  calendar: "bar-chart-outline",
+  settings: "person-outline",
+};
+
+const iconNameFilled: Record<BottomTabKey, keyof typeof Ionicons.glyphMap> = {
+  home: "sparkles",
+  journal: "book",
+  calendar: "bar-chart",
+  settings: "person",
 };
 
 export function BottomTabBar({ active, onPress, badges }: BottomTabBarProps) {
@@ -43,15 +51,12 @@ export function BottomTabBar({ active, onPress, badges }: BottomTabBarProps) {
               hitSlop={8}
               style={[styles.item, selected && styles.itemSelected]}
             >
-              <View style={styles.iconWrap}>
-                <Text style={[styles.icon, selected && styles.iconSelected]}>{icons[tab]}</Text>
-                {badgeCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : `${badgeCount}`}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text style={[styles.itemText, selected && styles.itemTextSelected]}>{labels[tab]}</Text>
+              <Ionicons
+                name={selected ? iconNameFilled[tab] : iconName[tab]}
+                size={24}
+                color={selected ? colors.text : colors.mutedText}
+              />
+              {badgeCount > 0 ? <View style={styles.badge} /> : null}
             </Pressable>
           );
         })}
@@ -67,69 +72,33 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.bg,
     borderTopWidth: 1,
-    borderTopColor: "#DCE6EE",
+    borderTopColor: colors.border,
   },
   inner: {
     flexDirection: "row",
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.xs,
-    ...shadows.soft,
   },
   item: {
     flex: 1,
     minHeight: touchTarget.minSize,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radius.md,
-    gap: 2,
+    borderRadius: 12,
   },
   itemSelected: {
-    backgroundColor: "#E3F1F9",
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  iconWrap: {
-    minHeight: 18,
-    minWidth: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  icon: {
-    color: colors.mutedText,
-    fontSize: 15,
-    fontFamily: typography.family.medium,
-    lineHeight: 18,
-  },
-  iconSelected: {
-    color: colors.primaryDeep,
-    fontFamily: typography.family.bold,
-  },
-  itemText: {
-    color: colors.mutedText,
-    fontSize: typography.caption,
-    fontFamily: typography.family.medium,
-  },
-  itemTextSelected: {
-    color: colors.primaryDeep,
-    fontFamily: typography.family.bold,
+    backgroundColor: "#F0F5F2",
   },
   badge: {
     position: "absolute",
-    top: -6,
-    right: -10,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontFamily: typography.family.bold,
-    lineHeight: 12,
+    top: 8,
+    right: "33%",
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
   },
 });

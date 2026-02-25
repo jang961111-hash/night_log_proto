@@ -1,10 +1,9 @@
-import { LinearGradient } from "expo-linear-gradient";
-import { StyleSheet, Text, View } from "react-native";
+﻿import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
 
 import { AppButton } from "../components/AppButton";
-import { BrandMark } from "../components/BrandMark";
 import { ScreenFadeIn } from "../components/ScreenFadeIn";
-import { colors, radius, spacing, typography } from "../theme/tokens";
+import { colors, spacing, typography } from "../theme/tokens";
 
 type LandingScreenProps = {
   onStartSignup: () => void;
@@ -12,38 +11,56 @@ type LandingScreenProps = {
 };
 
 export function LandingScreen({ onStartSignup, onGoLogin }: LandingScreenProps) {
-  return (
-    <View style={styles.root}>
-      <LinearGradient
-        colors={["#F5FBFF", "#EAF5FB", "#EEF1F4"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
-      />
+  const [requiredAgree, setRequiredAgree] = useState(false);
+  const [marketingAgree, setMarketingAgree] = useState(false);
 
+  return (
+    <SafeAreaView style={styles.root}>
       <ScreenFadeIn style={styles.content}>
-        <View style={styles.hero}>
-          <BrandMark size={132} labelSize={44} />
+        <View style={styles.brandArea}>
           <Text style={styles.brand}>NightLog</Text>
-          <Text style={styles.catchLine}>오늘 감정을 3분 안에 정리하고 내일 행동을 확정하세요.</Text>
-          <Text style={styles.subLine}>
-            대화형 AI 코치가 요약, 일정 추천, 주간 리포트까지 연결해드립니다.
-          </Text>
+          <Text style={styles.subtitle}>서비스 이용을 위해 약관에 동의해주세요</Text>
         </View>
 
-        <View style={styles.valueCard}>
-          <Text style={styles.valueTitle}>왜 NightLog인가요?</Text>
-          <Text style={styles.valueItem}>1. 타이핑 없이 음성 중심으로 기록</Text>
-          <Text style={styles.valueItem}>2. 하루 요약과 감정 리포트를 즉시 확인</Text>
-          <Text style={styles.valueItem}>3. 내일 실행 가능한 일정까지 바로 저장</Text>
+        <View style={styles.agreementCard}>
+          <Pressable
+            style={styles.row}
+            onPress={() => setRequiredAgree((prev) => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: requiredAgree }}
+            accessibilityLabel={`필수 약관 동의 ${requiredAgree ? "선택됨" : "선택 안됨"}`}
+          >
+            <View style={[styles.circle, requiredAgree && styles.circleChecked]} />
+            <Text style={styles.rowText}>
+              <Text style={styles.required}>[필수] </Text>이용 약관 및 개인정보 처리방침에 동의합니다.
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.row}
+            onPress={() => setMarketingAgree((prev) => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: marketingAgree }}
+            accessibilityLabel={`선택 약관 동의 ${marketingAgree ? "선택됨" : "선택 안됨"}`}
+          >
+            <View style={[styles.circle, marketingAgree && styles.circleChecked]} />
+            <Text style={styles.rowText}>
+              <Text style={styles.optional}>[선택] </Text>마케팅 정보 수신에 동의합니다.
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.actions}>
-          <AppButton label="3초 회원가입 시작" onPress={onStartSignup} style={styles.actionButton} />
-          <AppButton label="이미 계정이 있어요" onPress={onGoLogin} variant="outline" style={styles.actionButton} />
+          <AppButton
+            label="동의하고 시작하기"
+            onPress={onStartSignup}
+            disabled={!requiredAgree}
+            style={styles.primaryButton}
+          />
+          <AppButton label="이미 계정이 있어요" onPress={onGoLogin} variant="ghost" />
         </View>
       </ScreenFadeIn>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -52,66 +69,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  gradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
   content: {
     flex: 1,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xxl + 8,
+    paddingTop: spacing.xxl + 6,
     paddingBottom: spacing.xxl,
     justifyContent: "space-between",
   },
-  hero: {
-    alignItems: "center",
+  brandArea: {
     gap: spacing.sm,
   },
   brand: {
-    marginTop: spacing.xs,
-    color: colors.text,
-    fontSize: 42,
-    letterSpacing: 0.4,
-    fontFamily: typography.family.bold,
-  },
-  catchLine: {
-    color: colors.text,
-    fontSize: typography.section,
-    textAlign: "center",
-    fontFamily: typography.family.bold,
-    lineHeight: 34,
-  },
-  subLine: {
-    color: colors.mutedText,
-    fontSize: typography.body,
-    textAlign: "center",
-    fontFamily: typography.family.regular,
-    lineHeight: 23,
-    paddingHorizontal: spacing.sm,
-  },
-  valueCard: {
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "#D7E5EF",
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  valueTitle: {
     color: colors.primaryDeep,
-    fontSize: typography.subtitle,
+    fontSize: 52,
     fontFamily: typography.family.bold,
-    marginBottom: 2,
+    letterSpacing: -0.8,
   },
-  valueItem: {
+  subtitle: {
     color: colors.text,
-    fontSize: typography.body,
+    fontSize: 24,
+    lineHeight: 35,
     fontFamily: typography.family.medium,
-    lineHeight: 23,
+  },
+  agreementCard: {
+    gap: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  circle: {
+    marginTop: 3,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: "transparent",
+  },
+  circleChecked: {
+    backgroundColor: "#DCEDE6",
+  },
+  rowText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: typography.subtitle,
+    lineHeight: 28,
+    fontFamily: typography.family.regular,
+  },
+  required: {
+    color: colors.primaryDeep,
+    fontFamily: typography.family.medium,
+  },
+  optional: {
+    color: colors.mutedText,
+    fontFamily: typography.family.medium,
   },
   actions: {
     gap: spacing.sm,
   },
-  actionButton: {
-    width: "100%",
+  primaryButton: {
+    minHeight: 64,
   },
 });

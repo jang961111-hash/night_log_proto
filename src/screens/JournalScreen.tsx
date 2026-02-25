@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,7 +19,6 @@ import {
 
 import { AppButton } from "../components/AppButton";
 import { ScreenFadeIn } from "../components/ScreenFadeIn";
-import { SelectChip } from "../components/SelectChip";
 import {
   buildEmotionMetrics,
   buildEmotionSummary,
@@ -28,7 +28,7 @@ import {
 } from "../lib/insights";
 import { apiChatEnd, apiChatStart, apiChatTurn } from "../lib/mockApi";
 import type { ChatState, DiaryMode, EmotionTag, EndResponse } from "../lib/schema";
-import { colors, radius, shadows, spacing, typography } from "../theme/tokens";
+import { colors, radius, spacing, typography } from "../theme/tokens";
 import type { ResultBundle, ScheduleDraftItem } from "../types/app";
 
 type JournalScreenProps = {
@@ -56,25 +56,12 @@ const modeLabel: Record<DiaryMode, string> = {
   "Sleep Prep": "수면 준비",
 };
 
-const moodOptions: Array<{ tag: EmotionTag; label: string }> = [
-  { tag: "joy", label: "좋음" },
-  { tag: "calm", label: "차분" },
-  { tag: "stress", label: "스트레스" },
-  { tag: "fatigue", label: "피곤" },
+const moodOptions: Array<{ tag: EmotionTag; label: string; emoji: string }> = [
+  { tag: "joy", label: "좋음", emoji: "😄" },
+  { tag: "calm", label: "차분", emoji: "🙂" },
+  { tag: "stress", label: "스트레스", emoji: "😣" },
+  { tag: "fatigue", label: "피곤", emoji: "😪" },
 ];
-
-const basePrompts = [
-  "오늘 가장 기억에 남는 장면은 뭐였지?",
-  "내일 꼭 해내고 싶은 한 가지는 무엇일까?",
-  "지금 마음을 한 문장으로 정리하면?",
-];
-
-const moodPrompts: Record<EmotionTag, string[]> = {
-  joy: ["오늘 잘한 점을 2가지만 적어줘", "이 좋은 흐름을 내일도 이어가려면?"],
-  calm: ["오늘 안정감을 준 순간은 언제였지?", "내일도 차분함을 지킬 첫 행동은?"],
-  stress: ["지금 가장 부담되는 일은 정확히 뭐야?", "내일 부담을 줄일 첫 10분 행동은?"],
-  fatigue: ["오늘 에너지를 가장 많이 쓴 일은 뭐였지?", "내일 피로를 줄이는 시작 루틴을 정해줘"],
-};
 
 function uniqueEmotions(tags: EmotionTag[]): EmotionTag[] {
   return Array.from(new Set(tags));
@@ -94,6 +81,19 @@ function micBar(value: number): string {
     return "██░░░";
   }
   return "█░░░░";
+}
+
+function formatHeaderDate(date: Date): string {
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${weekday}요일`;
+}
+
+function formatClock(date: Date): string {
+  const hour = date.getHours();
+  const minute = `${date.getMinutes()}`.padStart(2, "0");
+  const period = hour >= 12 ? "오후" : "오전";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${period} ${hour12}:${minute}`;
 }
 
 function mergeScheduleItems(
@@ -135,6 +135,10 @@ export function JournalScreen({
   const [listening, setListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("음성 대기");
   const [micLevel, setMicLevel] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [moodModalOpen, setMoodModalOpen] = useState(false);
+  const [moodIntensity, setMoodIntensity] = useState(70);
+  const [recordingModalOpen, setRecordingModalOpen] = useState(false);
 
   const [manualItems, setManualItems] = useState<ScheduleDraftItem[]>([]);
   const [manualModalOpen, setManualModalOpen] = useState(false);
@@ -163,12 +167,30 @@ export function JournalScreen({
   }, [voiceEnabled]);
 
   const canSend = Boolean(sessionId);
-  const stateText = useMemo(() => (chatState ? chatState : "대기"), [chatState]);
-  const starterPrompts = useMemo(() => {
-    if (!checkInMood) {
-      return basePrompts;
+  const hasUserInput = useMemo(
+    () => messages.some((message) => message.role === "user"),
+    [messages],
+  );
+  const canFinish = canSend && !loading && hasUserInput;
+
+  const diaryText = useMemo(() => {
+    const userLines = messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content.trim())
+      .filter((message) => message.length > 0);
+
+    if (userLines.length > 0) {
+      return userLines.join("\n\n");
     }
-    return [...moodPrompts[checkInMood], ...basePrompts].slice(0, 4);
+    const assistantPreview = messages.find((message) => message.role === "assistant")?.content;
+    return assistantPreview ?? "오늘의 첫 생각을 녹음하거나 직접 작성해보세요.";
+  }, [messages]);
+
+  const selectedMood = useMemo(() => {
+    if (!checkInMood) {
+      return moodOptions[1];
+    }
+    return moodOptions.find((option) => option.tag === checkInMood) ?? moodOptions[1];
   }, [checkInMood]);
 
   const appendMessage = (role: "assistant" | "user", content: string) => {
@@ -396,6 +418,7 @@ export function JournalScreen({
       setSessionId(null);
       setChatState(null);
       setManualItems([]);
+      setRecordingModalOpen(false);
       void stopVoice();
       onComplete(bundle);
     } catch (error) {
@@ -403,6 +426,25 @@ export function JournalScreen({
       Alert.alert("종료 실패", message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const shiftDate = (diff: number) => {
+    setSelectedDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + diff);
+      return next;
+    });
+  };
+
+  const openRecording = async () => {
+    if (!sessionIdRef.current) {
+      await handleStart();
+    }
+
+    setRecordingModalOpen(true);
+    if (voiceEnabledRef.current) {
+      await startListening();
     }
   };
 
@@ -489,220 +531,259 @@ export function JournalScreen({
   }, []);
 
   return (
-    <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.root}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <ScreenFadeIn>
-          <View style={styles.headerCard}>
-            <View>
-              <Text style={styles.title}>NightLog</Text>
-              <Text style={styles.subtitle}>{userName}님 · 연속 {streak}일</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <AppButton label="메인" onPress={onGoHome} variant="outline" />
-              <AppButton label="캘린더" onPress={onOpenCalendar} variant="outline" />
-              <AppButton label="로그아웃" onPress={onLogout} variant="ghost" />
-            </View>
+          <View style={styles.dateHeader}>
+            <Pressable style={styles.arrowButton} onPress={() => shiftDate(-1)} hitSlop={8}>
+              <Text style={styles.arrowText}>‹</Text>
+            </Pressable>
+            <Text style={styles.dateTitle}>{formatHeaderDate(selectedDate)}</Text>
+            <Pressable style={styles.arrowButton} onPress={() => shiftDate(1)} hitSlop={8}>
+              <Text style={styles.arrowText}>›</Text>
+            </Pressable>
           </View>
         </ScreenFadeIn>
 
-        <ScreenFadeIn delay={80}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>오늘 감정 체크인</Text>
-            <View style={styles.chipRow}>
-              {moodOptions.map((mood) => (
-                <View key={mood.tag} style={styles.chipCell}>
-                  <SelectChip
-                    label={mood.label}
-                    selected={checkInMood === mood.tag}
-                    onPress={() => setCheckInMood((prev) => (prev === mood.tag ? null : mood.tag))}
-                  />
+        <ScreenFadeIn delay={70}>
+          {messages.length === 0 ? (
+            <View style={styles.emptyPanel}>
+              <Text style={styles.emptyTitle}>오늘의 첫 생각을 들려주세요</Text>
+              <Pressable
+                style={styles.emptyMic}
+                onPress={() => {
+                  void openRecording();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="녹음 시작"
+              >
+                <Text style={styles.emptyMicIcon}>🎤</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setEntryMode("log");
+                  if (!sessionIdRef.current) {
+                    void handleStart();
+                  }
+                }}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <Text style={styles.directWriteText}>직접 작성</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.diaryCard}>
+              <View style={styles.diaryMetaRow}>
+                <Pressable onPress={() => setMoodModalOpen(true)} hitSlop={8}>
+                  <Text style={styles.diaryEmoji}>{selectedMood.emoji}</Text>
+                </Pressable>
+                <Text style={styles.diaryTime}>{formatClock(selectedDate)}</Text>
+                <Pressable
+                  onPress={() => setManualModalOpen(true)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="추가 메뉴"
+                >
+                  <Text style={styles.moreIcon}>⋮</Text>
+                </Pressable>
+              </View>
+
+              {manualItems.length > 0 ? (
+                <View style={styles.mediaMock}>
+                  <View style={styles.mediaLarge} />
+                  <View style={styles.mediaCol}>
+                    <View style={styles.mediaSmall} />
+                    <View style={styles.mediaRow}>
+                      <View style={styles.mediaSmall} />
+                      <View style={styles.mediaSmall} />
+                    </View>
+                  </View>
                 </View>
-              ))}
-            </View>
+              ) : null}
 
-            <Text style={styles.sectionTitle}>대화 모드</Text>
-            <View style={styles.chipRow}>
-              {modes.map((item) => (
-                <View key={item} style={styles.chipCell}>
-                  <SelectChip
-                    label={modeLabel[item]}
-                    selected={mode === item}
-                    onPress={() => setMode(item)}
-                  />
+              <Text style={styles.diaryBodyText}>{diaryText}</Text>
+
+              {manualItems.length > 0 ? (
+                <View style={styles.manualList}>
+                  {manualItems.map((item) => (
+                    <View key={item.id} style={styles.manualRow}>
+                      <Text style={styles.manualText}>
+                        {item.title} · {item.time}
+                      </Text>
+                      <Pressable onPress={() => removeManualItem(item.id)} hitSlop={8}>
+                        <Text style={styles.manualRemove}>삭제</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                 </View>
-              ))}
+              ) : null}
             </View>
-
-            <Text style={styles.sectionTitle}>오늘 시작 프롬프트</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptRow}>
-              {starterPrompts.map((prompt) => {
-                const selected = promptUsed === prompt;
-                return (
-                  <Pressable
-                    key={prompt}
-                    style={[styles.promptChip, selected && styles.promptChipSelected]}
-                    onPress={() => {
-                      setInput(prompt);
-                      setPromptUsed(prompt);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`프롬프트 ${selected ? "선택됨" : "선택 안됨"}: ${prompt}`}
-                  >
-                    <Text style={[styles.promptChipText, selected && styles.promptChipTextSelected]}>
-                      {prompt}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.entryRow}>
-              <AppButton
-                label={entryMode === "chat" ? "대화 모드" : "로그 모드"}
-                onPress={() => setEntryMode((prev) => (prev === "chat" ? "log" : "chat"))}
-                variant="outline"
-                style={styles.entryButton}
-              />
-              <AppButton
-                label={loading ? "준비 중" : sessionId ? "재시작" : "시작"}
-                onPress={() => void handleStart()}
-                disabled={loading}
-                style={styles.entryButton}
-              />
-            </View>
-          </View>
+          )}
         </ScreenFadeIn>
 
         <ScreenFadeIn delay={120}>
-          <View style={styles.sectionCard}>
-            <View style={styles.voiceRow}>
-              <Text style={styles.voiceTitle}>핸즈프리 음성</Text>
-              <AppButton
-                label={voiceEnabled ? "음성 끄기" : "음성 켜기"}
-                onPress={() => {
-                  const next = !voiceEnabled;
-                  setVoiceEnabled(next);
-
-                  if (!next) {
-                    void stopVoice();
-                    setVoiceStatus("음성 비활성");
-                  } else if (sessionIdRef.current) {
-                    void startListening();
-                  }
-                }}
-                variant={voiceEnabled ? "outline" : "primary"}
-              />
-            </View>
+          <View style={styles.recordCard}>
+            <AppButton
+              label={listening ? "녹음 중..." : "이어서 녹음하기"}
+              onPress={() => {
+                void openRecording();
+              }}
+              disabled={loading}
+            />
             <Text style={styles.voiceStatus}>
-              {voiceStatus} · {listening ? "마이크 ON" : "마이크 OFF"} · {micBar(micLevel)}
+              {modeLabel[mode]} · {voiceStatus} · {micBar(micLevel)}
             </Text>
-            <View style={styles.entryRow}>
-              <AppButton
-                label="한 번 듣기"
-                onPress={() => void startListening()}
-                variant="outline"
-                disabled={!canSend || !voiceEnabled}
-                style={styles.entryButton}
-              />
-              <AppButton
-                label="듣기 중지"
-                onPress={() => stopListening(true)}
-                variant="outline"
-                disabled={!listening}
-                style={styles.entryButton}
-              />
-            </View>
           </View>
         </ScreenFadeIn>
 
-        <ScreenFadeIn delay={160}>
-          <View style={styles.sectionCard}>
-            <View style={styles.chatBox}>
-              {messages.length === 0 ? (
-                <Text style={styles.emptyText}>대화를 시작하면 AI가 먼저 질문합니다.</Text>
-              ) : (
-                messages.map((message) => (
-                  <View
-                    key={message.id}
-                    style={[styles.bubble, message.role === "assistant" ? styles.assistant : styles.user]}
-                  >
-                    <Text style={styles.bubbleRole}>{message.role === "assistant" ? "AI" : "나"}</Text>
-                    <Text style={styles.bubbleText}>{message.content}</Text>
-                  </View>
-                ))
-              )}
-            </View>
-
-            {manualItems.length > 0 ? (
-              <View style={styles.manualList}>
-                <Text style={styles.manualTitle}>수동 추가 항목</Text>
-                {manualItems.map((item) => (
-                  <View key={item.id} style={styles.manualRow}>
-                    <Text style={styles.manualText}>
-                      {item.title} · {item.time}
-                    </Text>
-                    <Pressable
-                      onPress={() => removeManualItem(item.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${item.title} 삭제`}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.manualRemove}>삭제</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            <View style={styles.inputRow}>
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                onSubmitEditing={() => {
-                  if (canSend && !loading) {
-                    void handleSend(input);
-                  }
-                }}
-                returnKeyType="send"
-                placeholder={entryMode === "chat" ? "오늘 기록을 입력해주세요" : "오늘 로그를 입력해주세요"}
-                editable={canSend && !loading}
-                style={styles.input}
-                placeholderTextColor={colors.mutedText}
-              />
+        <ScreenFadeIn delay={150}>
+          <View style={styles.inputCard}>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              onSubmitEditing={() => {
+                if (canSend && !loading) {
+                  void handleSend(input);
+                }
+              }}
+              returnKeyType="send"
+              placeholder={entryMode === "chat" ? "지금 떠오르는 생각을 입력하세요" : "로그를 직접 작성하세요"}
+              editable={canSend && !loading}
+              style={styles.input}
+              placeholderTextColor={colors.mutedText}
+              multiline
+            />
+            <View style={styles.inputButtons}>
               <AppButton
                 label="전송"
                 onPress={() => void handleSend(input)}
                 disabled={!canSend || loading || input.trim().length === 0}
+                style={styles.entryButton}
+              />
+              <AppButton
+                label="결과 보기"
+                onPress={() => void finishSession()}
+                variant="outline"
+                disabled={!canFinish}
+                style={styles.entryButton}
               />
             </View>
-            <Text style={styles.helperText}>핸즈프리 모드에서는 말하면 자동 전송되고 AI가 음성으로 응답합니다.</Text>
-            <Text style={styles.helperText}>상태 {stateText}</Text>
+            <View style={styles.quickLinks}>
+              <Pressable onPress={onGoHome} hitSlop={8}>
+                <Text style={styles.quickLinkText}>메인</Text>
+              </Pressable>
+              <Pressable onPress={onOpenCalendar} hitSlop={8}>
+                <Text style={styles.quickLinkText}>인사이트</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const index = modes.indexOf(mode);
+                  const next = modes[(index + 1) % modes.length];
+                  setMode(next);
+                }}
+                hitSlop={8}
+              >
+                <Text style={styles.quickLinkText}>모드 변경</Text>
+              </Pressable>
+              <Pressable onPress={onLogout} hitSlop={8}>
+                <Text style={styles.quickLinkText}>로그아웃</Text>
+              </Pressable>
+            </View>
           </View>
         </ScreenFadeIn>
       </ScrollView>
 
-      <View style={styles.bottomActions}>
-        <AppButton
-          label="조기 종료 버튼"
-          onPress={() => void finishSession()}
-          variant="outline"
-          disabled={!canSend || loading}
-          style={styles.endButton}
-        />
-        <Pressable
-          style={styles.plusFab}
-          onPress={() => {
-            setManualError(null);
-            setManualModalOpen(true);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="수동 일정 또는 메모 추가"
-          hitSlop={10}
-        >
-          <Text style={styles.plusFabIcon}>＋</Text>
-        </Pressable>
-      </View>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={moodModalOpen}
+        onRequestClose={() => setMoodModalOpen(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.moodModalCard}>
+            <Text style={styles.modalTitle}>오늘의 기분</Text>
+            <Text style={styles.modalEmoji}>{selectedMood.emoji}</Text>
+            <Text style={styles.modalMoodText}>{selectedMood.label}</Text>
+            <Pressable
+              style={styles.moodTrack}
+              onPress={(event) => {
+                const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / 240));
+                setMoodIntensity(Math.round(ratio * 100));
+              }}
+              accessibilityRole="adjustable"
+              accessibilityLabel="기분 강도"
+            >
+              <View style={[styles.moodFill, { width: `${moodIntensity}%` }]} />
+            </Pressable>
+            <View style={styles.moodOptionsRow}>
+              {moodOptions.map((mood) => {
+                const selected = checkInMood === mood.tag;
+                return (
+                  <Pressable
+                    key={mood.tag}
+                    style={[styles.moodOption, selected && styles.moodOptionSelected]}
+                    onPress={() => setCheckInMood(mood.tag)}
+                  >
+                    <Text style={styles.moodOptionEmoji}>{mood.emoji}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <AppButton label="저장" onPress={() => setMoodModalOpen(false)} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={recordingModalOpen}
+        onRequestClose={() => setRecordingModalOpen(false)}
+      >
+        <View style={styles.modalDim}>
+          <View style={styles.recordModalCard}>
+            <View style={styles.recordHandle} />
+            <Text style={styles.recordTitle}>녹음 진행 중</Text>
+            <View style={styles.recordMicWrap}>
+              <View style={styles.recordMicOuter}>
+                <View style={styles.recordMicInner}>
+                  <Text style={styles.recordMicIcon}>🎙️</Text>
+                </View>
+              </View>
+            </View>
+            <Text style={styles.recordStatus}>
+              {listening ? "듣는 중" : "대기"} · {micBar(micLevel)}
+            </Text>
+            <View style={styles.recordButtons}>
+              <Pressable
+                style={styles.recordCancel}
+                onPress={() => {
+                  stopListening(true);
+                  setRecordingModalOpen(false);
+                }}
+              >
+                <Text style={styles.recordCancelText}>취소</Text>
+              </Pressable>
+              <AppButton
+                label="저장"
+                onPress={() => {
+                  if (input.trim().length > 0 && canSend && !loading) {
+                    void handleSend(input);
+                  }
+                  stopListening(true);
+                  setRecordingModalOpen(false);
+                }}
+                style={styles.recordSaveButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="slide"
@@ -748,7 +829,7 @@ export function JournalScreen({
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -758,146 +839,130 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   container: {
-    padding: spacing.lg,
-    paddingBottom: 170,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
+    paddingBottom: 180,
     gap: spacing.md,
   },
-  headerCard: {
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
+  dateHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    ...shadows.soft,
-  },
-  title: {
-    color: colors.text,
-    fontSize: typography.section,
-    fontFamily: typography.family.bold,
-  },
-  subtitle: {
-    color: colors.mutedText,
-    fontSize: typography.body,
-    fontFamily: typography.family.regular,
-  },
-  headerActions: {
-    alignItems: "flex-end",
-    gap: spacing.xs,
-  },
-  sectionCard: {
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
     gap: spacing.md,
-    ...shadows.soft,
   },
-  sectionTitle: {
+  arrowButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  arrowText: {
     color: colors.text,
-    fontSize: typography.subtitle,
+    fontSize: 30,
+    lineHeight: 32,
     fontFamily: typography.family.medium,
   },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
+  dateTitle: {
+    color: colors.text,
+    fontSize: 28,
+    fontFamily: typography.family.bold,
+    letterSpacing: -0.2,
   },
-  chipCell: {
-    width: "48%",
-  },
-  entryRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  entryButton: {
-    flex: 1,
-  },
-  promptRow: {
-    gap: spacing.xs,
-    paddingRight: spacing.xs,
-  },
-  promptChip: {
-    maxWidth: 280,
-    borderRadius: radius.pill,
+  emptyPanel: {
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "#EEF3F7",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  promptChipSelected: {
-    borderColor: colors.primary,
-    backgroundColor: "#E2F1F9",
-  },
-  promptChipText: {
-    color: colors.text,
-    fontSize: typography.caption,
-    fontFamily: typography.family.medium,
-  },
-  promptChipTextSelected: {
-    color: colors.primaryDeep,
-  },
-  voiceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    paddingVertical: 40,
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.lg,
+    backgroundColor: colors.surface,
   },
-  voiceTitle: {
-    color: colors.text,
-    fontSize: typography.subtitle,
-    fontFamily: typography.family.bold,
+  emptyTitle: {
+    color: colors.mutedText,
+    fontSize: typography.section,
+    lineHeight: 34,
+    textAlign: "center",
+    fontFamily: typography.family.medium,
+    paddingHorizontal: spacing.md,
   },
-  voiceStatus: {
-    color: colors.primaryDeep,
-    fontSize: typography.body,
+  emptyMic: {
+    width: 132,
+    height: 132,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  emptyMicIcon: {
+    fontSize: 48,
+  },
+  directWriteText: {
+    color: colors.mutedText,
+    fontSize: typography.section,
     fontFamily: typography.family.medium,
   },
-  chatBox: {
+  diaryCard: {
     borderRadius: radius.md,
-    backgroundColor: "#E8EDF1",
-    padding: spacing.sm,
-    minHeight: 220,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
     gap: spacing.sm,
   },
-  bubble: {
-    maxWidth: "86%",
-    borderRadius: radius.md,
-    padding: spacing.sm,
+  diaryMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  diaryEmoji: {
+    fontSize: 28,
+  },
+  diaryTime: {
+    flex: 1,
+    color: colors.mutedText,
+    fontSize: typography.subtitle,
+    fontFamily: typography.family.medium,
+  },
+  moreIcon: {
+    color: colors.mutedText,
+    fontSize: 22,
+    fontFamily: typography.family.medium,
+  },
+  mediaMock: {
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    flexDirection: "row",
+    gap: 2,
+    minHeight: 140,
+  },
+  mediaLarge: {
+    flex: 1.2,
+    backgroundColor: "#DCE8E2",
+  },
+  mediaCol: {
+    flex: 1,
     gap: 2,
   },
-  assistant: {
-    alignSelf: "flex-start",
-    backgroundColor: "#F2D857",
+  mediaRow: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 2,
   },
-  user: {
-    alignSelf: "flex-end",
-    backgroundColor: "#DFE5EA",
+  mediaSmall: {
+    flex: 1,
+    backgroundColor: "#DCE8E2",
   },
-  bubbleRole: {
-    color: colors.mutedText,
-    fontSize: typography.caption,
-    fontFamily: typography.family.medium,
-  },
-  bubbleText: {
+  diaryBodyText: {
     color: colors.text,
-    fontSize: typography.body,
-    fontFamily: typography.family.regular,
-  },
-  emptyText: {
-    color: colors.mutedText,
-    fontSize: typography.body,
+    fontSize: 19,
+    lineHeight: 30,
     fontFamily: typography.family.regular,
   },
   manualList: {
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceStrong,
+    borderRadius: radius.sm,
+    backgroundColor: "#F3F4F2",
     padding: spacing.sm,
     gap: spacing.xs,
-  },
-  manualTitle: {
-    color: colors.primaryDeep,
-    fontSize: typography.caption,
-    fontFamily: typography.family.bold,
   },
   manualRow: {
     flexDirection: "row",
@@ -916,59 +981,192 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
     fontFamily: typography.family.medium,
   },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  recordCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
     gap: spacing.xs,
   },
-  input: {
-    flex: 1,
-    minHeight: 50,
+  voiceStatus: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
+    fontFamily: typography.family.medium,
+  },
+  inputCard: {
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  inputButtons: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  entryButton: {
+    flex: 1,
+  },
+  input: {
+    minHeight: 110,
+    borderRadius: radius.sm,
     backgroundColor: colors.surfaceStrong,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     color: colors.text,
     fontFamily: typography.family.regular,
     fontSize: typography.body,
+    textAlignVertical: "top",
   },
-  helperText: {
-    color: colors.mutedText,
-    fontSize: typography.caption,
-    fontFamily: typography.family.regular,
-  },
-  bottomActions: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl + 48,
+  quickLinks: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
-  endButton: {
+  quickLinkText: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
+    fontFamily: typography.family.medium,
+  },
+  modalOverlayCenter: {
     flex: 1,
+    justifyContent: "center",
+    backgroundColor: "rgba(18, 30, 40, 0.36)",
+    paddingHorizontal: spacing.lg,
   },
-  plusFab: {
-    width: 86,
-    height: 86,
+  moodModalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: typography.section,
+    textAlign: "center",
+    fontFamily: typography.family.bold,
+  },
+  modalEmoji: {
+    textAlign: "center",
+    fontSize: 64,
+  },
+  modalMoodText: {
+    color: colors.text,
+    textAlign: "center",
+    fontSize: typography.subtitle,
+    fontFamily: typography.family.medium,
+  },
+  moodTrack: {
+    width: 240,
+    height: 12,
     borderRadius: 999,
-    backgroundColor: "#D2D9DE",
+    alignSelf: "center",
+    backgroundColor: "#E8EDF0",
+    overflow: "hidden",
+  },
+  moodFill: {
+    height: "100%",
+    backgroundColor: "#8CB6D8",
+    borderRadius: 999,
+  },
+  moodOptionsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  moodOption: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.border,
+    backgroundColor: "#F7F6F4",
     alignItems: "center",
     justifyContent: "center",
   },
-  plusFabIcon: {
-    color: colors.text,
-    fontSize: 56,
-    marginTop: -5,
-    fontFamily: typography.family.medium,
+  moodOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: "#E2EEE8",
+  },
+  moodOptionEmoji: {
+    fontSize: 20,
   },
   modalDim: {
     flex: 1,
     justifyContent: "flex-end",
     backgroundColor: "rgba(18, 30, 40, 0.36)",
+  },
+  recordModalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+    alignItems: "center",
+  },
+  recordHandle: {
+    width: 48,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "#E4E0DB",
+  },
+  recordTitle: {
+    color: colors.text,
+    fontSize: typography.section,
+    fontFamily: typography.family.bold,
+  },
+  recordMicWrap: {
+    marginTop: spacing.xs,
+  },
+  recordMicOuter: {
+    width: 150,
+    height: 150,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EEF2EF",
+  },
+  recordMicInner: {
+    width: 124,
+    height: 124,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  recordMicIcon: {
+    fontSize: 46,
+  },
+  recordStatus: {
+    color: colors.mutedText,
+    fontSize: typography.body,
+    fontFamily: typography.family.medium,
+  },
+  recordButtons: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  recordCancel: {
+    flex: 1,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recordCancelText: {
+    color: colors.text,
+    fontSize: typography.section,
+    fontFamily: typography.family.medium,
+  },
+  recordSaveButton: {
+    flex: 1,
   },
   modalCard: {
     backgroundColor: colors.surface,
@@ -978,11 +1176,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
     gap: spacing.sm,
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: typography.section,
-    fontFamily: typography.family.bold,
   },
   modalSub: {
     color: colors.mutedText,
