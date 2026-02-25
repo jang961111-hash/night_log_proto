@@ -1,22 +1,25 @@
-﻿import { Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors, radius, spacing, touchTarget, typography } from "../theme/tokens";
 
 type ButtonVariant = "primary" | "outline" | "ghost";
+type ButtonSize = "sm" | "md" | "lg";
 
 type AppButtonProps = {
   label: string;
   onPress: () => void;
   variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   accessibilityHint?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 };
 
 export function AppButton({
   label,
   onPress,
   variant = "primary",
+  size = "md",
   disabled = false,
   accessibilityHint,
   style,
@@ -32,6 +35,9 @@ export function AppButton({
       hitSlop={8}
       style={[
         styles.button,
+        size === "sm" && styles.buttonSm,
+        size === "md" && styles.buttonMd,
+        size === "lg" && styles.buttonLg,
         variant === "primary" && styles.primary,
         variant === "outline" && styles.outline,
         variant === "ghost" && styles.ghost,
@@ -42,6 +48,8 @@ export function AppButton({
       <Text
         style={[
           styles.label,
+          size === "sm" && styles.labelSm,
+          size === "lg" && styles.labelLg,
           variant === "primary" ? styles.labelPrimary : styles.labelOutline,
           disabled && styles.labelDisabled,
         ]}
@@ -54,12 +62,22 @@ export function AppButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: touchTarget.comfortable,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
     borderWidth: 1,
+  },
+  buttonSm: {
+    minHeight: touchTarget.minSize,
+    paddingHorizontal: spacing.md,
+  },
+  buttonMd: {
+    minHeight: touchTarget.comfortable,
+    paddingHorizontal: spacing.lg,
+  },
+  buttonLg: {
+    minHeight: 62,
+    paddingHorizontal: spacing.lg,
   },
   primary: {
     borderColor: colors.primary,
@@ -77,8 +95,14 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    fontSize: typography.subtitle,
+    fontSize: typography.body,
     fontFamily: typography.family.medium,
+  },
+  labelSm: {
+    fontSize: typography.caption,
+  },
+  labelLg: {
+    fontSize: typography.subtitle,
   },
   labelPrimary: {
     color: "#fff",

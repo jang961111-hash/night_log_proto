@@ -8,9 +8,16 @@ import { colors, spacing, typography } from "../theme/tokens";
 type LandingScreenProps = {
   onStartSignup: () => void;
   onGoLogin: () => void;
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
 };
 
-export function LandingScreen({ onStartSignup, onGoLogin }: LandingScreenProps) {
+export function LandingScreen({
+  onStartSignup,
+  onGoLogin,
+  onOpenTerms,
+  onOpenPrivacy,
+}: LandingScreenProps) {
   const [requiredAgree, setRequiredAgree] = useState(false);
   const [marketingAgree, setMarketingAgree] = useState(false);
 
@@ -35,6 +42,14 @@ export function LandingScreen({ onStartSignup, onGoLogin }: LandingScreenProps) 
               <Text style={styles.required}>[필수] </Text>이용 약관 및 개인정보 처리방침에 동의합니다.
             </Text>
           </Pressable>
+          <View style={styles.policyLinks}>
+            <Pressable onPress={onOpenTerms} accessibilityRole="button" hitSlop={8}>
+              <Text style={styles.policyLinkText}>이용약관 보기</Text>
+            </Pressable>
+            <Pressable onPress={onOpenPrivacy} accessibilityRole="button" hitSlop={8}>
+              <Text style={styles.policyLinkText}>개인정보 처리방침 보기</Text>
+            </Pressable>
+          </View>
 
           <Pressable
             style={styles.row}
@@ -99,6 +114,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
+  },
+  policyLinks: {
+    marginTop: -spacing.sm,
+    marginLeft: 38,
+    gap: 4,
+  },
+  policyLinkText: {
+    color: colors.primaryDeep,
+    fontSize: typography.body,
+    fontFamily: typography.family.medium,
+    textDecorationLine: "underline",
   },
   circle: {
     marginTop: 3,

@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -18,6 +19,7 @@ import { colors, spacing, typography } from "../theme/tokens";
 
 type LoginScreenProps = {
   loading: boolean;
+  knownUserIds: string[];
   onLogin: (userId: string, password: string) => Promise<string | null>;
   onGoSignup: () => void;
   onBackToLanding: () => void;
@@ -25,10 +27,12 @@ type LoginScreenProps = {
 
 export function LoginScreen({
   loading,
+  knownUserIds,
   onLogin,
   onGoSignup,
   onBackToLanding,
 }: LoginScreenProps) {
+  const { width, height } = useWindowDimensions();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +41,19 @@ export function LoginScreen({
 
   const trimmedUserId = userId.trim();
   const canSubmit = trimmedUserId.length > 0 && password.length > 0 && !loading;
+  const compact = height < 760;
+  const narrow = width < 360;
+  const quickIds = knownUserIds.slice(0, 4);
+
+  const fillKnownAccount = (knownId: string) => {
+    setUserId(knownId);
+    if (/^test\d+$/i.test(knownId) && password.length === 0) {
+      setPassword("123456");
+    }
+    if (error) {
+      setError(null);
+    }
+  };
 
   const handleLogin = async () => {
     if (!canSubmit) {
@@ -57,33 +74,39 @@ export function LoginScreen({
     >
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, compact && styles.scrollContentCompact]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <ScreenFadeIn style={styles.content}>
             <View style={styles.brandArea}>
-              <Text style={styles.brand}>NightLog</Text>
-              <Text style={styles.brandTagline}>오늘 하루, 편하게 말해보세요</Text>
+              <Text style={[styles.brand, compact && styles.brandCompact]}>NightLog</Text>
+              <Text style={[styles.brandTagline, compact && styles.brandTaglineCompact]}>
+                오늘 하루, 편하게 말해보세요
+              </Text>
+              {quickIds.length > 0 ? (
+                <View style={styles.quickAccountWrap}>
+                  <Text style={styles.quickAccountLabel}>저장된 계정</Text>
+                  <View style={styles.quickAccountRow}>
+                    {quickIds.map((knownId) => (
+                      <Pressable
+                        key={knownId}
+                        style={styles.quickAccountChip}
+                        onPress={() => fillKnownAccount(knownId)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${knownId} 계정 입력`}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.quickAccountChipText}>{knownId}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.quickAccountHint}>테스트 계정 비밀번호 기본값: 123456</Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.formArea}>
-              <AppButton
-                label="Google로 계속하기"
-                onPress={() => {
-                  // 소셜 로그인은 MVP 범위 밖. 시안 참고용 버튼만 노출.
-                }}
-                variant="outline"
-                disabled
-                style={styles.googleButton}
-              />
-
-              <View style={styles.separatorRow}>
-                <View style={styles.separatorLine} />
-                <Text style={styles.separatorText}>또는</Text>
-                <View style={styles.separatorLine} />
-              </View>
-
               <AppInput
                 value={userId}
                 onChangeText={(value) => {
@@ -144,7 +167,9 @@ export function LoginScreen({
                   void handleLogin();
                 }}
                 disabled={!canSubmit}
+                size={narrow ? "md" : "lg"}
                 style={styles.loginButton}
+                accessibilityHint="입력한 계정으로 로그인합니다"
               />
 
               <Pressable onPress={onGoSignup} accessibilityRole="button" hitSlop={8}>
@@ -174,6 +199,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xxl,
     paddingBottom: spacing.xxl,
   },
+  scrollContentCompact: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
   content: {
     flex: 1,
     justifyContent: "space-between",
@@ -190,33 +219,55 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     fontFamily: typography.family.bold,
   },
+  brandCompact: {
+    fontSize: 44,
+  },
   brandTagline: {
     color: colors.text,
     fontSize: 20,
     fontFamily: typography.family.medium,
   },
+  brandTaglineCompact: {
+    fontSize: 18,
+  },
+  quickAccountWrap: {
+    marginTop: spacing.sm,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  quickAccountLabel: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
+    fontFamily: typography.family.medium,
+  },
+  quickAccountRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  quickAccountChip: {
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickAccountChipText: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontFamily: typography.family.medium,
+  },
+  quickAccountHint: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
+    fontFamily: typography.family.regular,
+  },
   formArea: {
     gap: spacing.md,
-  },
-  googleButton: {
-    minHeight: 58,
-    borderColor: colors.border,
-  },
-  separatorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginVertical: spacing.xs,
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  separatorText: {
-    color: colors.mutedText,
-    fontSize: typography.body,
-    fontFamily: typography.family.regular,
   },
   inputWrap: {
     gap: 0,
@@ -245,7 +296,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
   },
   loginButton: {
-    minHeight: 60,
+    width: "100%",
     marginTop: spacing.xs,
   },
   signupText: {

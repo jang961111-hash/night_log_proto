@@ -56,6 +56,38 @@ const emptyHomePreview: HomeCalendarPreview = {
   nextScheduleTime: null,
 };
 
+function normalizeUserId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+async function ensureSeedAccounts(accounts: UserAccount[]): Promise<UserAccount[]> {
+  if (accounts.length > 0) {
+    return accounts;
+  }
+
+  const now = new Date().toISOString();
+  const seedIds = ["test1", "test2"];
+  const seeded = await Promise.all(
+    seedIds.map(async (userId, index) => {
+      const passwordRecord = await createPasswordRecord("123456");
+      return {
+        userId,
+        ...passwordRecord,
+        name: `테스트 사용자 ${index + 1}`,
+        birthDate: "1995-01-01",
+        gender: "기타" as const,
+        job: "테스트",
+        interests: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+    }),
+  );
+
+  await saveAccounts(seeded);
+  return seeded;
+}
+
 function latestResultFromHistory(
   history: DiaryHistoryRecord[],
   userId: string,
@@ -96,11 +128,13 @@ export default function App() {
     let mounted = true;
 
     const bootstrap = async () => {
-      const [savedAccounts, savedHistory, currentUserId] = await Promise.all([
+      const [storedAccounts, savedHistory, currentUserId] = await Promise.all([
         loadAccounts(),
         loadDiaryHistory(),
         loadCurrentUser(),
       ]);
+
+      const savedAccounts = await ensureSeedAccounts(storedAccounts);
 
       if (!mounted) {
         return;
@@ -110,7 +144,12 @@ export default function App() {
       setHistory(savedHistory);
 
       if (currentUserId) {
-        const account = savedAccounts.find((item) => item.userId === currentUserId) ?? null;
+        const account =
+          savedAccounts.find((item) => item.userId === currentUserId) ??
+          savedAccounts.find(
+            (item) => normalizeUserId(item.userId) === normalizeUserId(currentUserId),
+          ) ??
+          null;
         if (account) {
           setCurrentUser(account);
           const draft = await loadScheduleDraft(account.userId);
@@ -121,10 +160,10 @@ export default function App() {
             setInterestReturnRoute("home");
           }
         } else {
-          setPostIntroRoute("landing");
+          setPostIntroRoute(savedAccounts.length > 0 ? "login" : "landing");
         }
       } else {
-        setPostIntroRoute("landing");
+        setPostIntroRoute(savedAccounts.length > 0 ? "login" : "landing");
       }
 
       if (mounted) {
@@ -148,15 +187,35 @@ export default function App() {
   }, []);
 
   const login = async (userId: string, password: string): Promise<string | null> => {
-    if (!userId || !password) {
+    const normalizedUserId = normalizeUserId(userId);
+
+    if (!normalizedUserId || !password) {
       return "ID와 비밀번호를 입력해주세요.";
     }
 
     setBusy(true);
     try {
-      const account = accounts.find((item) => item.userId === userId);
-      if (!account || !(await verifyPassword(account, password))) {
-        return "ID 또는 비밀번호가 올바르지 않습니다.";
+      const sourceAccounts =
+        accounts.length > 0 ? accounts : await loadAccounts();
+
+      if (sourceAccounts !== accounts) {
+        setAccounts(sourceAccounts);
+      }
+
+      const candidates = sourceAccounts
+        .filter((item) => normalizeUserId(item.userId) === normalizedUserId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      let account: UserAccount | null = null;
+      for (const candidate of candidates) {
+        if (await verifyPassword(candidate, password)) {
+          account = candidate;
+          break;
+        }
+      }
+
+      if (!account) {
+        return "ID 또는 비밀번호가 올바르지 않습니다. 대소문자와 공백을 확인해주세요.";
       }
 
       setCurrentUser(account);
@@ -174,8 +233,17 @@ export default function App() {
   };
 
   const signup = async (form: SignupForm): Promise<string | null> => {
-    if (accounts.some((item) => item.userId === form.userId)) {
-      return "이미 사용 중인 ID입니다.";
+    const normalizedUserId = normalizeUserId(form.userId);
+    if (!normalizedUserId) {
+      return "ID를 입력해주세요.";
+    }
+
+    if (
+      accounts.some(
+        (item) => normalizeUserId(item.userId) === normalizedUserId,
+      )
+    ) {
+      return "이미 사용 중인 ID입니다. 기존 계정으로 로그인해주세요.";
     }
 
     setBusy(true);
@@ -183,7 +251,7 @@ export default function App() {
       const now = new Date().toISOString();
       const passwordRecord = await createPasswordRecord(form.password);
       const newAccount: UserAccount = {
-        userId: form.userId,
+        userId: normalizedUserId,
         ...passwordRecord,
         name: form.name,
         birthDate: form.birthDate,
@@ -200,6 +268,15 @@ export default function App() {
       setScheduleDraft([]);
 
       await Promise.all([saveAccounts(nextAccounts), saveCurrentUser(newAccount.userId)]);
+
+      const persistedAccounts = await loadAccounts();
+      const persisted = persistedAccounts.some(
+        (item) => normalizeUserId(item.userId) === normalizedUserId,
+      );
+
+      if (!persisted) {
+        return "계정 저장에 실패했습니다. 앱 권한/저장공간을 확인한 뒤 다시 시도해주세요.";
+      }
 
       setInterestReturnRoute("home");
       setRoute("interests");
@@ -310,7 +387,6 @@ export default function App() {
     Boolean(currentUser) &&
     (route === "home" ||
       route === "journal" ||
-      route === "result" ||
       route === "calendar" ||
       route === "settings");
 
@@ -458,7 +534,7 @@ export default function App() {
       setCurrentUser(null);
       setLatestResult(null);
       setScheduleDraft([]);
-      setRoute("landing");
+      setRoute(accounts.length > 0 ? "login" : "landing");
     } finally {
       setBusy(false);
     }
@@ -538,6 +614,8 @@ export default function App() {
       <LandingScreen
         onStartSignup={() => setRoute("signup")}
         onGoLogin={() => setRoute("login")}
+        onOpenTerms={() => openLegal("terms", "landing")}
+        onOpenPrivacy={() => openLegal("privacy", "landing")}
       />
     );
   }
@@ -546,6 +624,7 @@ export default function App() {
     screen = (
       <LoginScreen
         loading={busy}
+        knownUserIds={accounts.map((item) => item.userId).slice(0, 8)}
         onLogin={login}
         onGoSignup={() => setRoute("signup")}
         onBackToLanding={() => setRoute("landing")}

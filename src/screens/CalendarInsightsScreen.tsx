@@ -1,5 +1,13 @@
 ﻿import { useMemo, useState } from "react";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import {
   buildMonthMatrix,
@@ -154,6 +162,7 @@ export function CalendarInsightsScreen({ userId, history, onBack }: CalendarInsi
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const { width } = useWindowDimensions();
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -217,6 +226,7 @@ export function CalendarInsightsScreen({ userId, history, onBack }: CalendarInsi
   );
 
   const recentWeekTrend = useMemo(() => buildWeeklySeries(history, userId), [history, userId]);
+  const chartWidth = Math.max(220, Math.min(560, width - spacing.lg * 2 - spacing.md * 2));
 
   return (
     <SafeAreaView style={styles.root}>
@@ -319,7 +329,7 @@ export function CalendarInsightsScreen({ userId, history, onBack }: CalendarInsi
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>감정 변화</Text>
-              <WeeklyLineChart points={yearTrend} width={300} />
+              <WeeklyLineChart points={yearTrend} width={chartWidth} />
             </View>
           </>
         ) : (
@@ -377,7 +387,10 @@ export function CalendarInsightsScreen({ userId, history, onBack }: CalendarInsi
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>감정 변화</Text>
-              <WeeklyLineChart points={monthTrend.some((point) => point.value > 0) ? monthTrend : recentWeekTrend} width={300} />
+              <WeeklyLineChart
+                points={monthTrend.some((point) => point.value > 0) ? monthTrend : recentWeekTrend}
+                width={chartWidth}
+              />
             </View>
           </>
         )}
