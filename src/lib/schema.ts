@@ -82,3 +82,18 @@ export type DiaryHistoryItem = {
   emotionTags: EmotionTag[];
   firstAction: string;
 };
+
+export type EmotionMetric = {
+  id: string;
+  label: string;
+  value: number;
+  color: string;
+};
+
+export type ScheduleRecommendationItem = {
+  id: string;
+  title: string;
+  time: string;
+  selected: boolean;
+  confidence: number;
+};

@@ -1,21 +1,45 @@
 {
   "expo": {
-    "name": "NightLog Prototype",
-    "slug": "nightlog-prototype",
+    "name": "NightLog",
+    "slug": "nightlog",
     "version": "1.0.0",
+    "scheme": "nightlog",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "NightLog가 음성 기록을 위해 마이크를 사용합니다.",
+          "speechRecognitionPermission": "NightLog가 음성을 텍스트로 변환하기 위해 음성 인식을 사용합니다.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as"
+          ]
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nightlog.app",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "com.nightlog.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +49,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "releaseChannel": "production"
     }
   }
 }

@@ -1,43 +1,61 @@
-# NightLog Prototype (Expo)
+# NightLog (Expo React Native)
 
-AI 일기 앱 출시를 위한 모바일 프로토타입입니다.  
-Next.js 웹 구조를 Expo(React Native) 앱으로 전환했습니다.
+NightLog는 대화형 저널링으로 하루를 정리하고, 감정 인사이트를 내일 일정으로 연결하는 모바일 앱 프로토타입입니다.
 
-## Tech Stack
+## 현재 상태
+- 멀티 화면 플로우 구현 완료
+  - 인트로 -> 랜딩 -> 로그인/회원가입 -> 관심사 -> 홈 -> 대화 -> 결과 -> 일정 조절 -> 캘린더 -> 설정/정책
+- 인증 이후 공통 하단 탭(메인/대화/캘린더/설정) 제공
+- 로컬 계정/기록 저장(AsyncStorage)
+- 대화 mock 엔진 연동(`apiChatStart/Turn/End`)
+- 음성 중심 저널링(STT + TTS)과 수동 일정 추가(+) 지원
+- 설정 화면에서 프로필 편집, 관심사 재설정, 데이터 초기화/계정삭제 지원
+- 결과/추천 일정/주간 통계 화면 포함
+- 릴리즈 기본 인프라 포함(`eas.json`, CI, 테스트)
 
+## 기술 스택
 - Expo SDK 54
 - React Native 0.81
 - TypeScript
-- 룰 기반 mock AI 엔진 (`src/lib/mockEngine.ts`)
+- AsyncStorage
+- react-native-svg
+- expo-font + Noto Sans KR
+- expo-speech + expo-speech-recognition
 
-## 실행
-
+## 시작하기
 ```bash
 npm install
 npm run start
 ```
 
-## 디바이스에서 확인
+## 음성 기능 실행 주의사항
+- `expo-speech-recognition`은 일반 Expo Go에서 제약이 있습니다.
+- 음성 인식 테스트는 Development Build 또는 EAS 빌드에서 진행하세요.
+- 권장: `npx expo prebuild` -> `npx expo run:android` 또는 `npx expo run:ios`
 
-1. 터미널에 표시되는 QR 코드를 Expo Go로 스캔
-2. 또는:
-
+## 주요 스크립트
 ```bash
-npm run android
-npm run ios
+npm run typecheck   # 타입 검사
+npm run test        # 단위 테스트
+npm run doctor      # Expo 환경 검사
+npm run ci          # typecheck + test
 ```
 
-## 구현된 UX 흐름
+## CI 게이트
+- GitHub Actions 필수 체크: `quality`, `doctor`, `audit`
+- 릴리즈 브랜치 머지 전 3개 체크가 모두 통과되어야 합니다.
 
-- 저널링 모드 선택 (Deep Reflection / Stress Reset / Gratitude / Sleep Prep)
-- 3~5턴 중심 AI 대화 (최대 7턴 상태머신 S0~S5)
-- 매 턴 events/tasks/emotion 추출 카드 업데이트
-- End 시 3줄 요약 + 감정 태그 + 내일 첫 행동 + 시간블록 제공
-- 카드 최소 수정 기능 (`event.title`, `task.estMinutes`)
-- 히스토리 검색/최근 날짜 필터/월간 요약/streak
-- STT 마이크 버튼은 UI만 제공 (동작 미구현)
+## 문서
+- 통합 기준 문서: `docs/master-spec.md`
+- 출시 실행 문서: `docs/launch-runbook.md`
+- 스토어 산출물 체크: `docs/store-assets-checklist.md`
+- 문서 인덱스: `docs/README.md`
 
-## 참고한 UX 방향
+## 실제 스토어 출시 준비
+1. `app.json`의 번들 식별자/버전 확인
+2. `npm run ci` + `npm run doctor` 통과
+3. `npx eas build -p android --profile production`
+4. `npx eas build -p ios --profile production`
+5. `npx eas submit`로 각 스토어 제출
 
-- Journal AI 앱 소개 페이지 흐름(가이드형 프롬프트, 감정/요약 중심 저널링) 참고
-  - https://play.google.com/store/apps/details?id=com.journalai
+상세 절차는 `docs/launch-runbook.md`를 따릅니다.

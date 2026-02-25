@@ -1,937 +1,718 @@
-import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
+﻿import { StatusBar } from "expo-status-bar";
 import {
-  Alert,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+  NotoSansKR_400Regular,
+  NotoSansKR_500Medium,
+  NotoSansKR_700Bold,
+  useFonts,
+} from "@expo-google-fonts/noto-sans-kr";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, View } from "react-native";
 
-import { apiChatEnd, apiChatStart, apiChatTurn } from "./src/lib/mockApi";
+import { createPasswordRecord, verifyPassword } from "./src/lib/auth";
+import { buildWeeklyReport, computeStreak, pickNextScheduleItem } from "./src/lib/insights";
+import {
+  loadAccounts,
+  loadCurrentUser,
+  loadDiaryHistory,
+  loadScheduleDraft,
+  saveAccounts,
+  saveCurrentUser,
+  saveDiaryHistory,
+  saveScheduleDraft,
+  upsertHistoryItem,
+} from "./src/lib/storage";
+import { CalendarInsightsScreen } from "./src/screens/CalendarInsightsScreen";
+import { BottomTabBar } from "./src/components/BottomTabBar";
+import { HomeScreen } from "./src/screens/HomeScreen";
+import { InterestScreen } from "./src/screens/InterestScreen";
+import { IntroSplashScreen } from "./src/screens/IntroSplashScreen";
+import { JournalScreen } from "./src/screens/JournalScreen";
+import { LandingScreen } from "./src/screens/LandingScreen";
+import { LegalScreen } from "./src/screens/LegalScreen";
+import { LoginScreen } from "./src/screens/LoginScreen";
+import { ResultScreen } from "./src/screens/ResultScreen";
+import { ScheduleScreen } from "./src/screens/ScheduleScreen";
+import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { SignupScreen } from "./src/screens/SignupScreen";
+import { colors, typography } from "./src/theme/tokens";
 import type {
-  ChatState,
-  DiaryHistoryItem,
-  DiaryMode,
-  EmotionTag,
-  EndResponse,
-  PartialCards,
-} from "./src/lib/schema";
+  AppRoute,
+  DiaryHistoryRecord,
+  HomeCalendarPreview,
+  LegalDocType,
+  ResultBundle,
+  ScheduleDraftItem,
+  SignupForm,
+  UserAccount,
+} from "./src/types/app";
 
-type ChatMessageView = {
-  id: string;
-  role: "assistant" | "user";
-  content: string;
+type MainTabRoute = "home" | "journal" | "calendar" | "settings";
+
+const emptyHomePreview: HomeCalendarPreview = {
+  weekEntryCount: 0,
+  consistencyScore: 0,
+  dominantEmotion: null,
+  nextScheduleTitle: null,
+  nextScheduleTime: null,
 };
 
-const modes: DiaryMode[] = ["Deep Reflection", "Stress Reset", "Gratitude", "Sleep Prep"];
+function latestResultFromHistory(
+  history: DiaryHistoryRecord[],
+  userId: string,
+): ResultBundle | null {
+  const latest = history
+    .filter((item) => item.userId === userId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
-const scenarioA = [
-  "오늘 회의에서 말 실수해서 후회돼",
-  "내일 3시에 병원 약속 있어",
-  "발표자료 수정해야 해 40분 정도",
-];
-
-const scenarioB = [
-  "오늘 운동하고 뿌듯했어",
-  "내일 특별한 약속은 없어",
-  "영어 공부 20분 하고 싶어",
-];
-
-const emptyCards: PartialCards = {
-  events: [],
-  tasks: [],
-};
-
-function makeId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function dateKeyFromIso(isoText: string): string {
-  return isoText.slice(0, 10);
-}
-
-function getRecentDateKeys(days: number): string[] {
-  const base = new Date();
-  const keys: string[] = [];
-  for (let i = 0; i < days; i += 1) {
-    const date = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 0, 0, 0, 0);
-    keys.push(date.toISOString().slice(0, 10));
-  }
-  return keys;
-}
-
-function computeStreak(history: DiaryHistoryItem[]): number {
-  const keys = new Set(history.map((item) => dateKeyFromIso(item.createdAt)));
-  const today = new Date();
-  let streak = 0;
-  for (;;) {
-    const target = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() - streak,
-      0,
-      0,
-      0,
-      0,
-    );
-    const key = target.toISOString().slice(0, 10);
-    if (!keys.has(key)) {
-      break;
-    }
-    streak += 1;
-  }
-  return streak;
+  return latest?.resultSnapshot ?? null;
 }
 
 export default function App() {
-  const [mode, setMode] = useState<DiaryMode>("Deep Reflection");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [state, setState] = useState<ChatState | null>(null);
-  const [messages, setMessages] = useState<ChatMessageView[]>([]);
-  const [input, setInput] = useState("");
-  const [cards, setCards] = useState<PartialCards>(emptyCards);
-  const [emotions, setEmotions] = useState<EmotionTag[]>([]);
-  const [finalResult, setFinalResult] = useState<EndResponse | null>(null);
-  const [history, setHistory] = useState<DiaryHistoryItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [eventDraft, setEventDraft] = useState("");
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [taskDraft, setTaskDraft] = useState("40");
-  const [isLocked, setIsLocked] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [fontsLoaded] = useFonts({
+    NotoSansKR_400Regular,
+    NotoSansKR_500Medium,
+    NotoSansKR_700Bold,
+  });
 
-  const recentDateKeys = useMemo(() => getRecentDateKeys(7), []);
-  const streak = useMemo(() => computeStreak(history), [history]);
+  const [booting, setBooting] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
+  const [postIntroRoute, setPostIntroRoute] = useState<AppRoute>("landing");
+  const [busy, setBusy] = useState(false);
+  const [route, setRoute] = useState<AppRoute>("landing");
+  const [calendarBackRoute, setCalendarBackRoute] = useState<AppRoute>("home");
+  const [interestReturnRoute, setInterestReturnRoute] = useState<AppRoute>("home");
+  const [legalDoc, setLegalDoc] = useState<LegalDocType>("terms");
+  const [legalBackRoute, setLegalBackRoute] = useState<AppRoute>("signup");
+  const [journalAutoStartToken, setJournalAutoStartToken] = useState(0);
 
-  const filteredHistory = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return history.filter((item) => {
-      if (selectedDateKey && dateKeyFromIso(item.createdAt) !== selectedDateKey) {
-        return false;
+  const [accounts, setAccounts] = useState<UserAccount[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [history, setHistory] = useState<DiaryHistoryRecord[]>([]);
+  const [latestResult, setLatestResult] = useState<ResultBundle | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraftItem[]>([]);
+  const scheduleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      const [savedAccounts, savedHistory, currentUserId] = await Promise.all([
+        loadAccounts(),
+        loadDiaryHistory(),
+        loadCurrentUser(),
+      ]);
+
+      if (!mounted) {
+        return;
       }
-      if (!q) {
-        return true;
-      }
-      const hay = `${item.preview} ${item.firstAction} ${item.emotionTags.join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [history, searchQuery, selectedDateKey]);
 
-  const historyCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of history) {
-      const key = dateKeyFromIso(item.createdAt);
-      map.set(key, (map.get(key) ?? 0) + 1);
+      setAccounts(savedAccounts);
+      setHistory(savedHistory);
+
+      if (currentUserId) {
+        const account = savedAccounts.find((item) => item.userId === currentUserId) ?? null;
+        if (account) {
+          setCurrentUser(account);
+          const draft = await loadScheduleDraft(account.userId);
+          if (mounted) {
+            setScheduleDraft(draft);
+            setLatestResult(latestResultFromHistory(savedHistory, account.userId));
+            setPostIntroRoute(account.interests.length > 0 ? "home" : "interests");
+            setInterestReturnRoute("home");
+          }
+        } else {
+          setPostIntroRoute("landing");
+        }
+      } else {
+        setPostIntroRoute("landing");
+      }
+
+      if (mounted) {
+        setBooting(false);
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scheduleSaveTimerRef.current) {
+        clearTimeout(scheduleSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const login = async (userId: string, password: string): Promise<string | null> => {
+    if (!userId || !password) {
+      return "ID와 비밀번호를 입력해주세요.";
     }
-    return map;
-  }, [history]);
 
-  const monthSummary = useMemo(() => {
-    const now = new Date();
-    const monthPrefix = `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, "0")}`;
-    const items = history.filter((item) => item.createdAt.startsWith(monthPrefix));
-
-    const emotionCount = new Map<string, number>();
-    for (const item of items) {
-      for (const emotion of item.emotionTags) {
-        emotionCount.set(emotion, (emotionCount.get(emotion) ?? 0) + 1);
+    setBusy(true);
+    try {
+      const account = accounts.find((item) => item.userId === userId);
+      if (!account || !(await verifyPassword(account, password))) {
+        return "ID 또는 비밀번호가 올바르지 않습니다.";
       }
-    }
-    const topEmotion =
-      Array.from(emotionCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "none";
-    return { count: items.length, topEmotion };
-  }, [history]);
 
-  const displayResult = useMemo<EndResponse | null>(() => {
-    if (!finalResult) {
+      setCurrentUser(account);
+      await saveCurrentUser(account.userId);
+
+      const draft = await loadScheduleDraft(account.userId);
+      setScheduleDraft(draft);
+      setLatestResult(latestResultFromHistory(history, account.userId));
+      setInterestReturnRoute("home");
+      setRoute(account.interests.length > 0 ? "home" : "interests");
       return null;
+    } finally {
+      setBusy(false);
     }
-    return {
-      ...finalResult,
-      finalCards: cards,
+  };
+
+  const signup = async (form: SignupForm): Promise<string | null> => {
+    if (accounts.some((item) => item.userId === form.userId)) {
+      return "이미 사용 중인 ID입니다.";
+    }
+
+    setBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const passwordRecord = await createPasswordRecord(form.password);
+      const newAccount: UserAccount = {
+        userId: form.userId,
+        ...passwordRecord,
+        name: form.name,
+        birthDate: form.birthDate,
+        gender: form.gender,
+        job: form.job,
+        interests: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const nextAccounts = [newAccount, ...accounts];
+      setAccounts(nextAccounts);
+      setCurrentUser(newAccount);
+      setScheduleDraft([]);
+
+      await Promise.all([saveAccounts(nextAccounts), saveCurrentUser(newAccount.userId)]);
+
+      setInterestReturnRoute("home");
+      setRoute("interests");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveInterests = async (interests: string[]) => {
+    if (!currentUser) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const nextUser: UserAccount = {
+        ...currentUser,
+        interests,
+        updatedAt: new Date().toISOString(),
+      };
+      const nextAccounts = accounts.map((item) =>
+        item.userId === nextUser.userId ? nextUser : item,
+      );
+
+      setCurrentUser(nextUser);
+      setAccounts(nextAccounts);
+      await saveAccounts(nextAccounts);
+      setRoute(interestReturnRoute === "settings" ? "settings" : "home");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveResultBundle = async (bundle: ResultBundle, userIdArg?: string) => {
+    const userId = userIdArg ?? currentUser?.userId;
+    if (!userId) {
+      return;
+    }
+
+    const item: DiaryHistoryRecord = {
+      id: bundle.result.sessionId,
+      userId,
+      createdAt: bundle.endedAt,
+      mode: bundle.result.mode,
+      preview: bundle.result.finalDiary3Lines[0],
+      emotionTags: bundle.emotionTags,
+      firstAction: bundle.result.recommendations.firstAction,
+      resultSnapshot: bundle,
     };
-  }, [finalResult, cards]);
 
-  const canSend = Boolean(sessionId);
-
-  const appendMessage = (role: "assistant" | "user", content: string) => {
-    setMessages((prev) => [...prev, { id: makeId(), role, content }]);
+    const nextHistory = await upsertHistoryItem(item);
+    setHistory(nextHistory);
   };
 
-  const saveHistory = (result: EndResponse, tags: EmotionTag[]) => {
-    const item: DiaryHistoryItem = {
-      id: makeId(),
-      createdAt: new Date().toISOString(),
-      mode: result.mode,
-      preview: result.finalDiary3Lines[0],
-      emotionTags: tags,
-      firstAction: result.recommendations.firstAction,
-    };
-    setHistory((prev) =>
-      [item, ...prev].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 120),
-    );
+  const handleComplete = async (bundle: ResultBundle) => {
+    setLatestResult(bundle);
+    setScheduleDraft(bundle.scheduleItems);
+
+    if (currentUser) {
+      await Promise.all([
+        saveScheduleDraft(currentUser.userId, bundle.scheduleItems),
+        saveResultBundle(bundle, currentUser.userId),
+      ]);
+    }
+
+    setRoute("result");
   };
 
-  const handleStart = async () => {
-    if (loading) {
-      return;
+  const onChangeScheduleItems = async (items: ScheduleDraftItem[]) => {
+    setScheduleDraft(items);
+
+    let nextBundle: ResultBundle | null = null;
+    if (latestResult) {
+      nextBundle = {
+        ...latestResult,
+        scheduleItems: items,
+      };
+      setLatestResult(nextBundle);
     }
-    setLoading(true);
-    try {
-      const data = await apiChatStart(mode);
-      setSessionId(data.sessionId);
-      setState(data.state);
-      setCards(data.partialCards);
-      setEmotions(data.emotionSnapshot);
-      setFinalResult(null);
-      setMessages([{ id: makeId(), role: "assistant", content: data.assistantQuestion }]);
-    } catch {
-      Alert.alert("Start 실패", "세션 시작 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
+
+    if (scheduleSaveTimerRef.current) {
+      clearTimeout(scheduleSaveTimerRef.current);
     }
+
+    const userId = currentUser?.userId;
+    scheduleSaveTimerRef.current = setTimeout(() => {
+      void (async () => {
+        if (!userId) {
+          return;
+        }
+
+        await saveScheduleDraft(userId, items);
+
+        if (nextBundle) {
+          await saveResultBundle(nextBundle, userId);
+        }
+      })();
+    }, 350);
   };
 
-  const handleSend = async (text: string) => {
-    if (loading || !sessionId) {
-      return;
-    }
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    setLoading(true);
-    appendMessage("user", trimmed);
-    setInput("");
-
-    try {
-      const data = await apiChatTurn(sessionId, trimmed);
-      setState(data.state);
-      setCards(data.partialCards);
-      setEmotions(data.emotionSnapshot);
-      appendMessage("assistant", data.assistantQuestion);
-    } catch {
-      Alert.alert("Turn 실패", "입력 처리 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
+  const openCalendar = (from: AppRoute) => {
+    setCalendarBackRoute(from);
+    setRoute("calendar");
   };
 
-  const handleEnd = async () => {
-    if (loading || !sessionId) {
+  const showBottomTabs =
+    Boolean(currentUser) &&
+    (route === "home" ||
+      route === "journal" ||
+      route === "result" ||
+      route === "calendar" ||
+      route === "settings");
+
+  const activeTab: MainTabRoute =
+    route === "calendar"
+      ? "calendar"
+      : route === "settings"
+        ? "settings"
+        : route === "journal"
+          ? "journal"
+          : "home";
+
+  const onTabPress = (tab: MainTabRoute) => {
+    if (tab === "home") {
+      setRoute("home");
       return;
     }
-    setLoading(true);
-    try {
-      const data = await apiChatEnd(sessionId);
-      setState(data.state);
-      setFinalResult(data);
-      saveHistory(data, emotions);
-      appendMessage("assistant", "요약 생성 완료. Insight 카드를 확인해보세요.");
-    } catch {
-      Alert.alert("End 실패", "요약 생성 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const runScenario = async (script: string[]) => {
-    if (loading) {
+    if (tab === "journal") {
+      setRoute("journal");
       return;
     }
-    setLoading(true);
-    try {
-      const start = await apiChatStart(mode);
-      setSessionId(start.sessionId);
-      setState(start.state);
-      setCards(start.partialCards);
-      setEmotions(start.emotionSnapshot);
-      setFinalResult(null);
-      setMessages([{ id: makeId(), role: "assistant", content: start.assistantQuestion }]);
 
-      let latestEmotions: EmotionTag[] = [];
-      for (const line of script) {
-        setMessages((prev) => [...prev, { id: makeId(), role: "user", content: line }]);
-        const turn = await apiChatTurn(start.sessionId, line);
-        setState(turn.state);
-        setCards(turn.partialCards);
-        setEmotions(turn.emotionSnapshot);
-        latestEmotions = turn.emotionSnapshot;
-        setMessages((prev) => [...prev, { id: makeId(), role: "assistant", content: turn.assistantQuestion }]);
+    if (tab === "calendar") {
+      if (route === "calendar") {
+        return;
       }
+      openCalendar(route);
+      return;
+    }
 
-      const end = await apiChatEnd(start.sessionId);
-      setState(end.state);
-      setFinalResult(end);
-      setEmotions(latestEmotions);
-      saveHistory(end, latestEmotions);
-      appendMessage("assistant", "Scenario 완료. 요약/추천을 확인하세요.");
-    } catch {
-      Alert.alert("Scenario 실패", "자동 시나리오 실행 중 오류가 발생했습니다.");
+    setRoute("settings");
+  };
+
+  const tabBadges = useMemo(
+    () => ({
+      home: latestResult ? 1 : 0,
+    }),
+    [latestResult],
+  );
+
+  const openLegal = (doc: LegalDocType, backRoute: AppRoute) => {
+    setLegalDoc(doc);
+    setLegalBackRoute(backRoute);
+    setRoute("legal");
+  };
+
+  const saveProfile = async (patch: { name: string; job: string }): Promise<string | null> => {
+    if (!currentUser) {
+      return "로그인이 필요합니다.";
+    }
+
+    const nextName = patch.name.trim();
+    const nextJob = patch.job.trim();
+    if (!nextName || !nextJob) {
+      return "이름과 직업을 입력해주세요.";
+    }
+
+    setBusy(true);
+    try {
+      const nextUser: UserAccount = {
+        ...currentUser,
+        name: nextName,
+        job: nextJob,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const nextAccounts = accounts.map((item) =>
+        item.userId === nextUser.userId ? nextUser : item,
+      );
+
+      setCurrentUser(nextUser);
+      setAccounts(nextAccounts);
+      await saveAccounts(nextAccounts);
+      return null;
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
+
+  const resetCurrentUserData = async (): Promise<void> => {
+    if (!currentUser) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (scheduleSaveTimerRef.current) {
+        clearTimeout(scheduleSaveTimerRef.current);
+      }
+      const filteredHistory = history.filter((item) => item.userId !== currentUser.userId);
+      setHistory(filteredHistory);
+      setLatestResult(null);
+      setScheduleDraft([]);
+
+      await Promise.all([
+        saveDiaryHistory(filteredHistory),
+        saveScheduleDraft(currentUser.userId, []),
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteCurrentAccount = async (): Promise<void> => {
+    if (!currentUser) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (scheduleSaveTimerRef.current) {
+        clearTimeout(scheduleSaveTimerRef.current);
+      }
+      const userId = currentUser.userId;
+      const nextAccounts = accounts.filter((item) => item.userId !== userId);
+      const nextHistory = history.filter((item) => item.userId !== userId);
+
+      setAccounts(nextAccounts);
+      setHistory(nextHistory);
+      setCurrentUser(null);
+      setLatestResult(null);
+      setScheduleDraft([]);
+
+      await Promise.all([
+        saveAccounts(nextAccounts),
+        saveDiaryHistory(nextHistory),
+        saveScheduleDraft(userId, []),
+        saveCurrentUser(null),
+      ]);
+
+      setRoute("landing");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    setBusy(true);
+    try {
+      if (scheduleSaveTimerRef.current) {
+        clearTimeout(scheduleSaveTimerRef.current);
+      }
+      await saveCurrentUser(null);
+      setCurrentUser(null);
+      setLatestResult(null);
+      setScheduleDraft([]);
+      setRoute("landing");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const streak = useMemo(() => {
+    if (!currentUser) {
+      return 0;
+    }
+    return computeStreak(history, currentUser.userId);
+  }, [currentUser, history]);
+
+  const userHistoryCount = useMemo(() => {
+    if (!currentUser) {
+      return 0;
+    }
+    return history.filter((item) => item.userId === currentUser.userId).length;
+  }, [currentUser, history]);
+
+  const homeCalendarPreview = useMemo<HomeCalendarPreview>(() => {
+    if (!currentUser) {
+      return emptyHomePreview;
+    }
+
+    const report = buildWeeklyReport(history, currentUser.userId);
+    const nextSchedule = pickNextScheduleItem(scheduleDraft);
+
+    return {
+      weekEntryCount: report.totalEntries,
+      consistencyScore: report.consistencyScore,
+      dominantEmotion: report.dominantEmotion,
+      nextScheduleTitle: nextSchedule?.title ?? null,
+      nextScheduleTime: nextSchedule?.time ?? null,
+    };
+  }, [currentUser, history, scheduleDraft]);
+
+  useEffect(() => {
+    if (
+      !currentUser &&
+      route !== "landing" &&
+      route !== "login" &&
+      route !== "signup" &&
+      route !== "legal"
+    ) {
+      setRoute("landing");
+    }
+  }, [currentUser, route]);
+
+  if (!fontsLoaded || booting) {
+    return (
+      <SafeAreaView style={styles.bootRoot}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color={colors.primaryDeep} />
+        <Text style={styles.bootText}>NightLog를 준비하고 있습니다...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (showIntro) {
+    return (
+      <View style={styles.appRoot}>
+        <StatusBar style="dark" />
+        <IntroSplashScreen
+          onDone={() => {
+            setShowIntro(false);
+            setRoute(postIntroRoute);
+          }}
+        />
+      </View>
+    );
+  }
+
+  let screen: ReactNode = null;
+
+  if (route === "landing") {
+    screen = (
+      <LandingScreen
+        onStartSignup={() => setRoute("signup")}
+        onGoLogin={() => setRoute("login")}
+      />
+    );
+  }
+
+  if (route === "login") {
+    screen = (
+      <LoginScreen
+        loading={busy}
+        onLogin={login}
+        onGoSignup={() => setRoute("signup")}
+        onBackToLanding={() => setRoute("landing")}
+      />
+    );
+  }
+
+  if (route === "signup") {
+    screen = (
+      <SignupScreen
+        loading={busy}
+        onSubmit={signup}
+        onBack={() => setRoute("login")}
+        onOpenTerms={() => openLegal("terms", "signup")}
+        onOpenPrivacy={() => openLegal("privacy", "signup")}
+      />
+    );
+  }
+
+  if (route === "interests" && currentUser) {
+    screen = (
+      <InterestScreen
+        initialSelected={currentUser.interests}
+        onSkip={() => {
+          void saveInterests([]);
+        }}
+        onConfirm={(selected) => {
+          void saveInterests(selected);
+        }}
+      />
+    );
+  }
+
+  if (route === "home" && currentUser) {
+    screen = (
+      <HomeScreen
+        userName={currentUser.name}
+        streak={streak}
+        historyCount={userHistoryCount}
+        hasLatestResult={Boolean(latestResult)}
+        onStartChat={() => {
+          setJournalAutoStartToken((prev) => prev + 1);
+          setRoute("journal");
+        }}
+        onOpenCalendar={() => openCalendar("home")}
+        onOpenLatestResult={() => {
+          if (latestResult) {
+            setRoute("result");
+          }
+        }}
+        calendarPreview={homeCalendarPreview}
+      />
+    );
+  }
+
+  if (route === "settings" && currentUser) {
+    screen = (
+      <SettingsScreen
+        account={currentUser}
+        loading={busy}
+        historyCount={userHistoryCount}
+        scheduleCount={scheduleDraft.length}
+        hasLatestResult={Boolean(latestResult)}
+        onBack={() => setRoute("home")}
+        onSaveProfile={saveProfile}
+        onOpenInterests={() => {
+          setInterestReturnRoute("settings");
+          setRoute("interests");
+        }}
+        onOpenTerms={() => openLegal("terms", "settings")}
+        onOpenPrivacy={() => openLegal("privacy", "settings")}
+        onResetUserData={resetCurrentUserData}
+        onDeleteAccount={deleteCurrentAccount}
+        onLogout={() => {
+          void logout();
+        }}
+      />
+    );
+  }
+
+  if (route === "journal" && currentUser) {
+    screen = (
+      <JournalScreen
+        userName={currentUser.name}
+        streak={streak}
+        autoStartToken={journalAutoStartToken}
+        onComplete={(bundle) => {
+          void handleComplete(bundle);
+        }}
+        onGoHome={() => setRoute("home")}
+        onOpenCalendar={() => openCalendar("journal")}
+        onLogout={() => {
+          void logout();
+        }}
+      />
+    );
+  }
+
+  if (route === "result") {
+    screen = (
+      <ResultScreen
+        bundle={latestResult}
+        onChangeScheduleItems={(items) => {
+          void onChangeScheduleItems(items);
+        }}
+        onGoMain={() => setRoute("home")}
+        onGoSchedule={() => setRoute("schedule")}
+        onOpenCalendar={() => openCalendar("result")}
+      />
+    );
+  }
+
+  if (route === "schedule") {
+    screen = (
+      <ScheduleScreen
+        items={scheduleDraft}
+        onChangeItems={(items) => {
+          void onChangeScheduleItems(items);
+        }}
+        onGoHome={() => setRoute("home")}
+      />
+    );
+  }
+
+  if (route === "calendar" && currentUser) {
+    screen = (
+      <CalendarInsightsScreen
+        userId={currentUser.userId}
+        history={history}
+        onBack={() => setRoute(calendarBackRoute)}
+      />
+    );
+  }
+
+  if (route === "legal") {
+    screen = <LegalScreen docType={legalDoc} onBack={() => setRoute(legalBackRoute)} />;
+  }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.appRoot}>
       <StatusBar style="dark" />
-      <View style={styles.bgShapeA} />
-      <View style={styles.bgShapeB} />
-
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerCard}>
-          <Text style={styles.title}>NightLog AI Journal</Text>
-          <Text style={styles.subtitle}>Voice-first AI diary flow inspired by mobile journaling UX</Text>
-          <View style={styles.streakRow}>
-            <Text style={styles.streakText}>Streak {streak} days</Text>
-            <Text style={styles.streakText}>State {state ?? "-"}</Text>
-            <Pressable style={styles.smallButton} onPress={() => setIsLocked((prev) => !prev)}>
-              <Text style={styles.smallButtonText}>{isLocked ? "Unlock" : "Lock"}</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modeScroll}>
-          {modes.map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => setMode(item)}
-              style={[styles.modeChip, mode === item && styles.modeChipActive]}
-            >
-              <Text style={[styles.modeChipText, mode === item && styles.modeChipTextActive]}>
-                {item}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Conversation</Text>
-          <View style={styles.actionRow}>
-            <Pressable style={styles.actionButton} onPress={handleStart} disabled={loading}>
-              <Text style={styles.actionButtonText}>Start</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.actionButton, !canSend && styles.actionButtonDisabled]}
-              onPress={handleEnd}
-              disabled={loading || !canSend}
-            >
-              <Text style={styles.actionButtonText}>End</Text>
-            </Pressable>
-            <Pressable style={styles.actionButton} onPress={() => runScenario(scenarioA)} disabled={loading}>
-              <Text style={styles.actionButtonText}>Scenario A</Text>
-            </Pressable>
-            <Pressable style={styles.actionButton} onPress={() => runScenario(scenarioB)} disabled={loading}>
-              <Text style={styles.actionButtonText}>Scenario B</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.quickRow}>
-            {[
-              "오늘은 꽤 힘들었어",
-              "내일 오후 2시에 약속 있어",
-              "발표 준비 30분 해야 해",
-            ].map((template) => (
-              <Pressable
-                key={template}
-                style={styles.quickChip}
-                onPress={() => setInput(template)}
-                disabled={!canSend || loading}
-              >
-                <Text style={styles.quickChipText}>{template}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.chatBox}>
-            {messages.length === 0 ? (
-              <Text style={styles.emptyText}>Start를 눌러 AI 일기 대화를 시작하세요.</Text>
-            ) : (
-              messages.map((item) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.bubble,
-                    item.role === "assistant" ? styles.bubbleAssistant : styles.bubbleUser,
-                  ]}
-                >
-                  <Text style={styles.bubbleRole}>{item.role === "assistant" ? "AI" : "You"}</Text>
-                  <Text style={styles.bubbleText}>{item.content}</Text>
-                </View>
-              ))
-            )}
-          </View>
-
-          <View style={styles.inputRow}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              editable={canSend && !loading}
-              placeholder="오늘의 기록을 입력하세요"
-              style={styles.input}
-            />
-            <Pressable
-              onPress={() => handleSend(input)}
-              disabled={!canSend || loading || input.trim().length === 0}
-              style={[styles.sendButton, (!canSend || input.trim().length === 0) && styles.actionButtonDisabled]}
-            >
-              <Text style={styles.sendButtonText}>Send</Text>
-            </Pressable>
-            <Pressable style={[styles.sendButton, styles.micButton]} disabled>
-              <Text style={styles.sendButtonText}>Mic</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Insight Cards</Text>
-          <View style={styles.tagsRow}>
-            {emotions.length > 0 ? (
-              emotions.map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>감정 태그가 아직 없습니다.</Text>
-            )}
-          </View>
-
-          <Text style={styles.sectionLabel}>Events</Text>
-          {cards.events.length === 0 ? (
-            <Text style={styles.emptyText}>추출된 일정이 없습니다.</Text>
-          ) : (
-            cards.events.map((event) => (
-              <View style={styles.itemCard} key={event.id}>
-                <Text style={styles.itemTitle}>{event.title}</Text>
-                <Text style={styles.itemMeta}>{new Date(event.datetime).toLocaleString()}</Text>
-                <Text style={styles.itemMeta}>confidence {event.confidence.toFixed(2)}</Text>
-                {editingEventId === event.id ? (
-                  <View style={styles.inlineEditRow}>
-                    <TextInput value={eventDraft} onChangeText={setEventDraft} style={styles.inlineInput} />
-                    <Pressable
-                      style={styles.smallButton}
-                      onPress={() => {
-                        const nextTitle = eventDraft.trim();
-                        if (!nextTitle) {
-                          return;
-                        }
-                        setCards((prev) => ({
-                          ...prev,
-                          events: prev.events.map((item) =>
-                            item.id === event.id ? { ...item, title: nextTitle } : item,
-                          ),
-                        }));
-                        setEditingEventId(null);
-                      }}
-                    >
-                      <Text style={styles.smallButtonText}>Save</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    style={styles.smallButton}
-                    onPress={() => {
-                      setEditingEventId(event.id);
-                      setEventDraft(event.title);
-                    }}
-                  >
-                    <Text style={styles.smallButtonText}>Edit</Text>
-                  </Pressable>
-                )}
-              </View>
-            ))
-          )}
-
-          <Text style={styles.sectionLabel}>Tasks</Text>
-          {cards.tasks.length === 0 ? (
-            <Text style={styles.emptyText}>추출된 할 일이 없습니다.</Text>
-          ) : (
-            cards.tasks.map((task) => (
-              <View style={styles.itemCard} key={task.id}>
-                <Text style={styles.itemTitle}>{task.title}</Text>
-                <Text style={styles.itemMeta}>est {task.estMinutes} min</Text>
-                <Text style={styles.itemMeta}>priority {task.priority}</Text>
-                {editingTaskId === task.id ? (
-                  <View style={styles.inlineEditRow}>
-                    <TextInput
-                      keyboardType="numeric"
-                      value={taskDraft}
-                      onChangeText={setTaskDraft}
-                      style={styles.inlineInput}
-                    />
-                    <Pressable
-                      style={styles.smallButton}
-                      onPress={() => {
-                        const parsed = Number.parseInt(taskDraft, 10);
-                        const next = Number.isFinite(parsed) ? Math.max(5, parsed) : task.estMinutes;
-                        setCards((prev) => ({
-                          ...prev,
-                          tasks: prev.tasks.map((item) =>
-                            item.id === task.id ? { ...item, estMinutes: next } : item,
-                          ),
-                        }));
-                        setEditingTaskId(null);
-                      }}
-                    >
-                      <Text style={styles.smallButtonText}>Save</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    style={styles.smallButton}
-                    onPress={() => {
-                      setEditingTaskId(task.id);
-                      setTaskDraft(`${task.estMinutes}`);
-                    }}
-                  >
-                    <Text style={styles.smallButtonText}>Edit</Text>
-                  </Pressable>
-                )}
-              </View>
-            ))
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>AI Summary</Text>
-          {!displayResult ? (
-            <Text style={styles.emptyText}>End를 누르면 3줄 요약과 내일 첫 행동 추천이 나옵니다.</Text>
-          ) : (
-            <>
-              {displayResult.finalDiary3Lines.map((line, index) => (
-                <Text key={`${line}-${index}`} style={styles.summaryLine}>
-                  {index + 1}. {line}
-                </Text>
-              ))}
-              <Text style={styles.sectionLabel}>Tomorrow First Action</Text>
-              <Text style={styles.itemTitle}>{displayResult.recommendations.firstAction}</Text>
-              <Text style={styles.sectionLabel}>Time Blocks</Text>
-              {displayResult.recommendations.timeBlocks.slice(0, 2).map((block) => (
-                <Text style={styles.itemMeta} key={block}>
-                  - {block}
-                </Text>
-              ))}
-            </>
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Archive</Text>
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="검색: 요약, 감정, 추천"
-            style={styles.searchInput}
-          />
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScroll}>
-            <Pressable
-              style={[styles.dateChip, selectedDateKey === null && styles.dateChipActive]}
-              onPress={() => setSelectedDateKey(null)}
-            >
-              <Text style={styles.dateChipText}>전체</Text>
-            </Pressable>
-            {recentDateKeys.map((key) => (
-              <Pressable
-                key={key}
-                style={[styles.dateChip, selectedDateKey === key && styles.dateChipActive]}
-                onPress={() => setSelectedDateKey(key)}
-              >
-                <Text style={styles.dateChipText}>
-                  {key.slice(5)} ({historyCounts.get(key) ?? 0})
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <View style={styles.monthSummary}>
-            <Text style={styles.itemMeta}>이번 달 기록 {monthSummary.count}개</Text>
-            <Text style={styles.itemMeta}>주요 감정 {monthSummary.topEmotion}</Text>
-          </View>
-
-          {filteredHistory.length === 0 ? (
-            <Text style={styles.emptyText}>기록이 없습니다.</Text>
-          ) : (
-            filteredHistory.map((item) => (
-              <View style={styles.itemCard} key={item.id}>
-                <Text style={styles.itemTitle}>{item.preview}</Text>
-                <Text style={styles.itemMeta}>{new Date(item.createdAt).toLocaleString()}</Text>
-                <Text style={styles.itemMeta}>mode {item.mode}</Text>
-                <Text style={styles.itemMeta}>
-                  emotions {item.emotionTags.length > 0 ? item.emotionTags.join(", ") : "none"}
-                </Text>
-                <Text style={styles.itemMeta}>first {item.firstAction}</Text>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-
-      {isLocked ? (
-        <View style={styles.lockOverlay}>
-          <View style={styles.lockCard}>
-            <Text style={styles.lockTitle}>App Locked</Text>
-            <Text style={styles.lockText}>개인 일기 보호를 위해 잠금 상태입니다.</Text>
-            <Pressable style={styles.actionButton} onPress={() => setIsLocked(false)}>
-              <Text style={styles.actionButtonText}>Unlock</Text>
-            </Pressable>
-          </View>
-        </View>
+      <View style={styles.screenArea}>{screen}</View>
+      {showBottomTabs ? (
+        <BottomTabBar active={activeTab} onPress={onTabPress} badges={tabBadges} />
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  appRoot: {
     flex: 1,
-    backgroundColor: "#f4f6f9",
+    backgroundColor: colors.bg,
   },
-  bgShapeA: {
-    position: "absolute",
-    top: -80,
-    left: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "#d8efe9",
-  },
-  bgShapeB: {
-    position: "absolute",
-    top: 130,
-    right: -50,
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    backgroundColor: "#ffe9cf",
-  },
-  container: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 40,
-    gap: 12,
-  },
-  headerCard: {
-    borderWidth: 1,
-    borderColor: "#d8dfe8",
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#1a2e3f",
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#5a6b7d",
-  },
-  streakRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-  },
-  streakText: {
-    fontSize: 12,
-    color: "#4e6174",
-    backgroundColor: "#eef4fb",
-    borderWidth: 1,
-    borderColor: "#d6e2ef",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  modeScroll: {
-    marginVertical: 2,
-  },
-  modeChip: {
-    borderWidth: 1,
-    borderColor: "#d1dce8",
-    backgroundColor: "#ffffff",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  modeChipActive: {
-    backgroundColor: "#1f6f6a",
-    borderColor: "#1f6f6a",
-  },
-  modeChipText: {
-    color: "#2a3d4f",
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  modeChipTextActive: {
-    color: "#ffffff",
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#d8dfe8",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 12,
-    gap: 10,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1f3345",
-  },
-  sectionLabel: {
-    marginTop: 2,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#33506b",
-  },
-  actionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  actionButton: {
-    backgroundColor: "#1f6f6a",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  actionButtonDisabled: {
-    opacity: 0.45,
-  },
-  actionButtonText: {
-    color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  quickRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  quickChip: {
-    borderWidth: 1,
-    borderColor: "#d8e5ef",
-    backgroundColor: "#f5f9fd",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  quickChipText: {
-    fontSize: 11,
-    color: "#3f5870",
-  },
-  chatBox: {
-    borderWidth: 1,
-    borderColor: "#dde5ee",
-    borderRadius: 12,
-    padding: 10,
-    gap: 8,
-    backgroundColor: "#fcfdff",
-  },
-  bubble: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-    gap: 3,
-  },
-  bubbleAssistant: {
-    alignSelf: "flex-start",
-    borderColor: "#cadcf0",
-    backgroundColor: "#edf5ff",
-  },
-  bubbleUser: {
-    alignSelf: "flex-end",
-    borderColor: "#c9e5d7",
-    backgroundColor: "#eef8f1",
-  },
-  bubbleRole: {
-    fontSize: 10,
-    color: "#5f7387",
-    fontWeight: "700",
-  },
-  bubbleText: {
-    fontSize: 14,
-    color: "#203547",
-  },
-  inputRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  input: {
+  screenArea: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#cfd9e4",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 14,
-    backgroundColor: "#ffffff",
   },
-  sendButton: {
-    backgroundColor: "#1f6f6a",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  sendButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  micButton: {
-    backgroundColor: "#8aa59f",
-  },
-  tagsRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  tag: {
-    borderWidth: 1,
-    borderColor: "#b7d8cc",
-    backgroundColor: "#e9f7f1",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  tagText: {
-    color: "#1c6554",
-    fontWeight: "700",
-    fontSize: 11,
-  },
-  itemCard: {
-    borderWidth: 1,
-    borderColor: "#dee6ef",
-    borderRadius: 12,
-    padding: 10,
-    gap: 4,
-    backgroundColor: "#ffffff",
-  },
-  itemTitle: {
-    fontWeight: "700",
-    color: "#234059",
-  },
-  itemMeta: {
-    color: "#5d7083",
-    fontSize: 12,
-  },
-  inlineEditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-  },
-  inlineInput: {
+  bootRoot: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#cad5e2",
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 13,
-  },
-  smallButton: {
-    borderWidth: 1,
-    borderColor: "#b6c8d9",
-    backgroundColor: "#f4f8fc",
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  smallButtonText: {
-    fontSize: 11,
-    color: "#39546e",
-    fontWeight: "700",
-  },
-  summaryLine: {
-    color: "#2a4158",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: "#d1dce7",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 14,
-  },
-  dateScroll: {
-    marginTop: 2,
-  },
-  dateChip: {
-    borderWidth: 1,
-    borderColor: "#cfdae6",
-    borderRadius: 999,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 8,
-  },
-  dateChipActive: {
-    backgroundColor: "#2d7c77",
-    borderColor: "#2d7c77",
-  },
-  dateChipText: {
-    color: "#2c4258",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  monthSummary: {
-    borderWidth: 1,
-    borderColor: "#d7e2eb",
-    borderRadius: 12,
-    backgroundColor: "#f8fbfd",
-    padding: 10,
-    gap: 3,
-  },
-  emptyText: {
-    color: "#6b7c8d",
-    fontSize: 13,
-  },
-  lockOverlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(18,34,46,0.35)",
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    backgroundColor: colors.bg,
+    gap: 14,
   },
-  lockCard: {
-    width: "100%",
-    maxWidth: 320,
-    borderWidth: 1,
-    borderColor: "#cad7e3",
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: "#fff",
-    gap: 10,
-  },
-  lockTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#24384d",
-    textAlign: "center",
-  },
-  lockText: {
-    textAlign: "center",
-    color: "#607387",
-    fontSize: 13,
+  bootText: {
+    color: colors.mutedText,
+    fontFamily: typography.family.medium,
+    fontSize: typography.body,
   },
 });
